@@ -1,3 +1,7 @@
+-- NOTE(fusion): I've re-enabled legacy XML action loading so this may not be
+-- needed any longer. The change is too small, and there is no reason for it
+-- to be the only sub-system doing it differently.
+
 -- If you don't intend to use actions.xml, you can delete this file.
 local function getIds(singleIdKey, fromIdKey, toIdKey)
     return function(node)
