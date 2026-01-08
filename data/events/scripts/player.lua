@@ -89,9 +89,8 @@ function Player:onReportBug(message, position)
 end
 
 function Player:onRotateItem(item)
-	local onRotateItem = EventCallback.onRotateItem
-	if onRotateItem then
-		return onRotateItem(self, item)
+	if hasEvent.onRotateItem then
+		Event.onRotateItem(self, item)
 	end
 	return true
 end
