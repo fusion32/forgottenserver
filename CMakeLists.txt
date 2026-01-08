@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.30)
 
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
@@ -100,7 +100,7 @@ if (APPLE)
     find_package(Iconv REQUIRED)
 endif()
 
-set(BOOST_REQUIRED_COMPONENTS system iostreams locale)
+set(BOOST_REQUIRED_COMPONENTS iostreams locale)
 if (HTTP)
     list(APPEND BOOST_REQUIRED_COMPONENTS json)
 endif ()
@@ -126,7 +126,7 @@ add_subdirectory(src)
 add_executable(tfs ${tfs_MAIN})
 target_link_libraries(tfs tfslib)
 
-### INTERPROCEDURAL_OPTIMIZATION ###
+### INTERPROCEDURAL_OPTIMIZATION (AKA LTO) ###
 include(CheckIPOSupported)
 check_ipo_supported(RESULT result OUTPUT error)
 if (result)
@@ -134,11 +134,8 @@ if (result)
 else ()
     message(STATUS "IPO is not supported: ${error}")
 endif ()
-### END INTERPROCEDURAL_OPTIMIZATION ###
 
 ### Git Version ###
-# Define the two required variables before including
-# the source code for watching a git repository.
 option(SKIP_GIT "Skip checking for git updates" OFF)
 if(NOT SKIP_GIT)
 	set(PRE_CONFIGURE_FILE "cmake/gitmetadata.h.in")
@@ -149,6 +146,5 @@ if(NOT SKIP_GIT)
 		target_include_directories(tfs PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 	endif()
 endif()
-### END  Git Version ###
 
 target_precompile_headers(tfs PUBLIC src/otpch.h)
