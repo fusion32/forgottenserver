@@ -32,12 +32,13 @@ bool XTEA_decrypt(NetworkMessage& msg, const xtea::round_keys& key)
 	uint8_t* buffer = msg.getRemainingBuffer();
 	xtea::decrypt(buffer, msg.getLength() - 6, key);
 
-	uint16_t innerLength = msg.get<uint16_t>();
-	if (innerLength + 8 > msg.getLength()) {
+	int payloadLen = msg.get<uint16_t>();
+	int messageLen = payloadLen + 8;
+	if (messageLen > msg.getLength()) {
 		return false;
 	}
 
-	msg.setLength(innerLength);
+	msg.setLength(messageLen);
 	return true;
 }
 
