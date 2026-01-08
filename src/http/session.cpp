@@ -23,7 +23,7 @@ void Session::read()
 	req = {};
 
 	// Set the timeout.
-	stream.expires_after(30s);
+	stream.expires_after(10s);
 
 	// Read a request
 	async_read(stream, buffer, req, [self = shared_from_this()](beast::error_code ec, size_t bytes_transferred) {
@@ -62,15 +62,15 @@ void Session::run()
 
 void Session::on_read(beast::error_code ec, size_t /*bytes_transferred*/)
 {
-	if (ec == beast::http::error::end_of_stream) {
+	//beast::errc::timed_out;
+	if (ec) {
+		if (ec != beast::http::error::end_of_stream && ec != beast::error::timeout) {
+			fmt::print(stderr, "Session::on_read: ({}) {}\n", ec.value(), ec.message());
+		}
+
 		close();
 		return;
 	}
-
-	if (ec) {
-		fmt::print(stderr, "{}: {}\n", __FUNCTION__, ec.message());
-		return;
-	};
 
 	auto ip = stream.socket().remote_endpoint().address().to_string();
 	write(handle_request(std::move(req), ip));
@@ -78,14 +78,11 @@ void Session::on_read(beast::error_code ec, size_t /*bytes_transferred*/)
 
 void Session::on_write(beast::error_code ec, size_t /*bytes_transferred*/, bool keep_alive)
 {
-	if (ec) {
-		fmt::print(stderr, "{}: {}\n", __FUNCTION__, ec.message());
-		return;
-	};
+	if (!keep_alive || ec) {
+		if (ec) {
+			fmt::print(stderr, "Session::on_write: ({}) {}\n", ec.value(), ec.message());
+		}
 
-	if (!keep_alive) {
-		// This means we should close the connection, usually because
-		// the response indicated the "Connection: close" semantic.
 		close();
 		return;
 	}
