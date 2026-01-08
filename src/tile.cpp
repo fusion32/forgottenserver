@@ -880,8 +880,11 @@ void Tile::addThing(int32_t, Thing* thing)
 
 			if (items) {
 				for (auto it = items->getBeginTopItem(), end = items->getEndTopItem(); it != end; ++it) {
-					// Note: this is different from internalAddThing
-					if (itemType.alwaysOnTopOrder < Item::items[(*it)->getID()].alwaysOnTopOrder) {
+					// TODO(fusion): This claimed to be different than `internalAddThing`
+					// but I can't see why that would be the case. I'd argue we'd always
+					// want to add items with the same stack priority, in the same order
+					// they're added.
+					if (Item::items[(*it)->getID()].alwaysOnTopOrder > itemType.alwaysOnTopOrder) {
 						items->insert(it, item);
 						isInserted = true;
 						break;
@@ -1434,7 +1437,7 @@ void Tile::internalAddThing(uint32_t, Thing* thing)
 		if (itemType.alwaysOnTop) {
 			bool isInserted = false;
 			for (auto it = items->getBeginTopItem(), end = items->getEndTopItem(); it != end; ++it) {
-				if (Item::items[(*it)->getID()].alwaysOnTopOrder >= itemType.alwaysOnTopOrder) {
+				if (Item::items[(*it)->getID()].alwaysOnTopOrder > itemType.alwaysOnTopOrder) {
 					items->insert(it, item);
 					isInserted = true;
 					break;
