@@ -34,10 +34,11 @@ std::string NetworkMessage::getString(int stringLen /* = 0*/)
 
 	std::string result;
 	if (canRead(stringLen)) {
+		// NOTE(fusion): Same as `NetworkMessage::getString`.
 		std::string_view latin1{(const char*)(&buffer[rdpos]), (size_t)stringLen};
 		result = boost::locale::conv::to_utf<char>(
-				latin1.begin(), latin1.end(), "ISO-8859-1",
-				boost::locale::conv::skip);
+				latin1.data(), latin1.data() + latin1.size(),
+				"ISO-8859-1", boost::locale::conv::skip);
 	}
 	rdpos += stringLen;
 	return result;
@@ -45,9 +46,13 @@ std::string NetworkMessage::getString(int stringLen /* = 0*/)
 
 void NetworkMessage::addString(std::string_view s)
 {
+	// NOTE(fusion): Using `s.begin()` and `s.end()` fails on MSVC because for
+	// whatever reason those iterators are not `const char*`, which causes the
+	// overload resolution for `from_utf` to fail. The absolute peak of C++
+	// design.
 	std::string latin1 = boost::locale::conv::from_utf<char>(
-			s.begin(), s.end(), "ISO-8859-1",
-			boost::locale::conv::skip);
+			s.data(), s.data() + s.size(),
+			"ISO-8859-1", boost::locale::conv::skip);
 
 	int stringLen = (int)latin1.size();
 	if(canAdd(stringLen)){

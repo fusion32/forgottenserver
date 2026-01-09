@@ -44,7 +44,9 @@ project(tfs CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-if (NOT WIN32)
+if (WIN32)
+    add_compile_definitions(_WIN32_WINNT=0x0601)
+else ()
     add_compile_options(-Wall -Wextra -Wnon-virtual-dtor -pedantic -Werror -pipe -fvisibility=hidden)
 endif ()
 
