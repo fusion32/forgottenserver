@@ -15,163 +15,124 @@ using NetworkMessage_ptr = std::unique_ptr<NetworkMessage>;
 class NetworkMessage
 {
 public:
-	using MsgSize_t = uint16_t;
-	// Headers:
-	// 2 bytes for unencrypted message size
-	// 4 bytes for checksum
-	// 2 bytes for encrypted message size
-	static constexpr MsgSize_t INITIAL_BUFFER_POSITION = 8;
-	enum
-	{
-		HEADER_LENGTH = 2
-	};
-	enum
-	{
-		CHECKSUM_LENGTH = 4
-	};
-	enum
-	{
-		XTEA_MULTIPLE = 8
-	};
-	enum
-	{
-		MAX_BODY_LENGTH = NETWORKMESSAGE_MAXSIZE - HEADER_LENGTH - CHECKSUM_LENGTH - XTEA_MULTIPLE
-	};
-	enum
-	{
-		MAX_PROTOCOL_BODY_LENGTH = MAX_BODY_LENGTH - 10
-	};
+	int rdpos;
+	int wrpos;
+	std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
 
-	NetworkMessage() = default;
+	NetworkMessage() {
+		rdpos = 0;
+		wrpos = 0;
+	}
 
-	void reset() { info = {}; }
+	bool canRead(int n) const { return (rdpos + n) <= wrpos; }
+	bool canAdd(int n) const { return (wrpos + n) <= (int)buffer.size(); }
+	bool isOverrun() const { return rdpos > wrpos || wrpos > (int)buffer.size(); }
 
-	// simply read functions for incoming message
+	uint8_t *getRemainingBuffer() {
+		if(!isOverrun()){
+			return &buffer[rdpos];
+		}else{
+			return &buffer[0];
+		}
+	}
+
+	const uint8_t *getRemainingBuffer() const {
+		if(!isOverrun()){
+			return &buffer[rdpos];
+		}else{
+			return &buffer[0];
+		}
+	}
+
+	int getRemainingLength() const {
+		if(!isOverrun()){
+			return wrpos - rdpos;
+		}else{
+			return 0;
+		}
+	}
+
+	int getWrittenLength() const {
+		if(!isOverrun()){
+			return wrpos;
+		}else{
+			return 0;
+		}
+	}
+
+	void discardPadding(int padding) {
+		assert(wrpos >= padding);
+		wrpos -= padding;
+	}
+
+	uint8_t peekByte(int offset = 0)
+	{
+		uint8_t result = 0;
+		if (canRead(offset + 1)) {
+			result = buffer[offset + rdpos];
+		}
+		return result;
+	}
+
+	template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+	T peek(int offset = 0)
+	{
+		T result = {};
+		if (canRead(offset + sizeof(T))) {
+			std::memcpy(&result, &buffer[rdpos + offset], sizeof(T));
+		}
+		return result;
+	}
+
 	uint8_t getByte()
 	{
-		if (!canRead(1)) {
-			return 0;
+		uint8_t result = 0;
+		if (canRead(1)) {
+			result = buffer[rdpos];
 		}
-
-		return buffer[info.position++];
+		rdpos += 1;
+		return result;
 	}
 
-	uint8_t getPreviousByte() { return buffer[--info.position]; }
-
-	template <typename T>
-	std::enable_if_t<std::is_trivially_copyable_v<T>, T> get() noexcept
+	template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+	T get()
 	{
-		static_assert(std::is_trivially_constructible_v<T>, "Destination type must be trivially constructible");
-
-		if (!canRead(sizeof(T))) {
-			return 0;
+		T result = {};
+		if (canRead(sizeof(T))) {
+			std::memcpy(&result, &buffer[rdpos], sizeof(T));
 		}
-
-		T value;
-		std::memcpy(&value, buffer.data() + info.position, sizeof(T));
-		info.position += sizeof(T);
-		return value;
+		rdpos += sizeof(T);
+		return result;
 	}
 
-	std::string getString(uint16_t stringLen = 0);
-	Position getPosition();
-
-	// skips count unknown/unused bytes in an incoming message
-	void skipBytes(int16_t count) { info.position += count; }
-
-	// simply write functions for outgoing message
 	void addByte(uint8_t value)
 	{
-		if (!canAdd(1)) {
-			return;
+		if(canAdd(1)){
+			buffer[wrpos] = value;
 		}
-
-		buffer[info.position++] = value;
-		info.length++;
+		wrpos += 1;
 	}
 
-	template <typename T>
+	template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
 	void add(T value)
 	{
-		if (!canAdd(sizeof(T))) {
-			return;
+		if(canAdd(sizeof(T))){
+			std::memcpy(&buffer[wrpos], &value, sizeof(T));
 		}
-
-		std::memcpy(buffer.data() + info.position, &value, sizeof(T));
-		info.position += sizeof(T);
-		info.length += sizeof(T);
+		wrpos += sizeof(T);
 	}
 
-	void addBytes(const char* bytes, size_t size);
-	void addPaddingBytes(size_t n);
-
-	void addString(std::string_view value);
-
-	void addDouble(double value, uint8_t precision = 2);
-
-	// write functions for complex types
+	Position getPosition();
 	void addPosition(const Position& pos);
+	std::string getString(int stringLen = 0);
+	void addString(std::string_view value);
+	void addBytes(const uint8_t* bytes, int size);
+	void addDouble(double value, uint8_t precision = 2);
 	void addItem(uint16_t id, uint8_t count);
 	void addItem(const Item* item);
 	void addItemId(uint16_t itemId);
 
-	MsgSize_t getLength() const { return info.length; }
-
-	bool isEmpty() const { return info.length == 0; }
-
-	void setLength(MsgSize_t newLength) { info.length = newLength; }
-
-	MsgSize_t getBufferPosition() const { return info.position; }
-
-	MsgSize_t getRemainingBufferLength() const { return info.length - info.position; }
-
-	bool setBufferPosition(MsgSize_t pos)
-	{
-		if (pos < NETWORKMESSAGE_MAXSIZE - INITIAL_BUFFER_POSITION) {
-			info.position = pos + INITIAL_BUFFER_POSITION;
-			return true;
-		}
-		return false;
-	}
-
-	uint16_t getLengthHeader() const { return static_cast<uint16_t>(buffer[0] | buffer[1] << 8); }
-
-	bool isOverrun() const { return info.overrun; }
-
-	uint8_t* getBuffer() { return &buffer[0]; }
-
-	const uint8_t* getBuffer() const { return &buffer[0]; }
-
-	uint8_t* getRemainingBuffer() { return &buffer[0] + info.position; }
-
-	uint8_t* getBodyBuffer()
-	{
-		info.position = 2;
-		return &buffer[HEADER_LENGTH];
-	}
-
-protected:
-	struct NetworkMessageInfo
-	{
-		MsgSize_t length = 0;
-		MsgSize_t position = INITIAL_BUFFER_POSITION;
-		bool overrun = false;
-	};
-
-	NetworkMessageInfo info;
-	std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
-
-private:
-	bool canAdd(size_t size) const { return (size + info.position) < MAX_BODY_LENGTH; }
-
-	bool canRead(int32_t size)
-	{
-		if ((info.position + size) > (info.length + 8) || size >= (NETWORKMESSAGE_MAXSIZE - info.position)) {
-			info.overrun = true;
-			return false;
-		}
-		return true;
-	}
+	void dump(std::string_view name) const;
 };
 
 #endif // FS_NETWORKMESSAGE_H

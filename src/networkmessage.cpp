@@ -10,24 +10,6 @@
 
 #include <boost/locale.hpp>
 
-std::string NetworkMessage::getString(uint16_t stringLen /* = 0*/)
-{
-	if (stringLen == 0) {
-		stringLen = get<uint16_t>();
-	}
-
-	if (!canRead(stringLen)) {
-		return {};
-	}
-
-	auto it = buffer.data() + info.position;
-	info.position += stringLen;
-
-	std::string_view latin1Str{reinterpret_cast<char*>(it), stringLen};
-	return boost::locale::conv::to_utf<char>(latin1Str.data(), latin1Str.data() + latin1Str.size(), "ISO-8859-1",
-	                                         boost::locale::conv::skip);
-}
-
 Position NetworkMessage::getPosition()
 {
 	Position pos;
@@ -37,54 +19,57 @@ Position NetworkMessage::getPosition()
 	return pos;
 }
 
-void NetworkMessage::addString(std::string_view value)
-{
-	std::string latin1Str = boost::locale::conv::from_utf<char>(value.data(), value.data() + value.size(), "ISO-8859-1",
-	                                                            boost::locale::conv::skip);
-	size_t stringLen = latin1Str.size();
-	if (!canAdd(stringLen + 2) || stringLen > 8192) {
-		return;
-	}
-
-	add<uint16_t>(stringLen);
-	std::memcpy(buffer.data() + info.position, latin1Str.data(), stringLen);
-	info.position += stringLen;
-	info.length += stringLen;
-}
-
-void NetworkMessage::addDouble(double value, uint8_t precision /* = 2*/)
-{
-	addByte(precision);
-	add<uint32_t>(static_cast<uint32_t>((value * std::pow(static_cast<float>(10), precision)) +
-	                                    std::numeric_limits<int32_t>::max()));
-}
-
-void NetworkMessage::addBytes(const char* bytes, size_t size)
-{
-	if (!canAdd(size) || size > 8192) {
-		return;
-	}
-
-	std::memcpy(buffer.data() + info.position, bytes, size);
-	info.position += size;
-	info.length += size;
-}
-
-void NetworkMessage::addPaddingBytes(size_t n)
-{
-	if (!canAdd(n)) {
-		return;
-	}
-
-	std::fill_n(buffer.data() + info.position, n, 0x33);
-	info.length += n;
-}
-
 void NetworkMessage::addPosition(const Position& pos)
 {
 	add<uint16_t>(pos.x);
 	add<uint16_t>(pos.y);
 	addByte(pos.z);
+}
+
+std::string NetworkMessage::getString(int stringLen /* = 0*/)
+{
+	if (stringLen <= 0) {
+		stringLen = get<uint16_t>();
+	}
+
+	std::string result;
+	if (canRead(stringLen)) {
+		std::string_view latin1{(const char*)(&buffer[rdpos]), (size_t)stringLen};
+		result = boost::locale::conv::to_utf<char>(
+				latin1.begin(), latin1.end(), "ISO-8859-1",
+				boost::locale::conv::skip);
+	}
+	rdpos += stringLen;
+	return result;
+}
+
+void NetworkMessage::addString(std::string_view s)
+{
+	std::string latin1 = boost::locale::conv::from_utf<char>(
+			s.begin(), s.end(), "ISO-8859-1",
+			boost::locale::conv::skip);
+
+	int stringLen = (int)latin1.size();
+	if(canAdd(stringLen)){
+		add<uint16_t>(stringLen);
+		std::memcpy(&buffer[wrpos], latin1.data(), stringLen);
+	}
+
+	wrpos += stringLen;
+}
+
+void NetworkMessage::addBytes(const uint8_t* bytes, int size)
+{
+	if (canAdd(size)) {
+		std::memcpy(&buffer[wrpos], bytes, size);
+	}
+	wrpos += size;
+}
+
+void NetworkMessage::addDouble(double value, uint8_t precision /* = 2*/)
+{
+	addByte(precision);
+	add<uint32_t>(value * std::pow(10.0f, precision) + INT32_MAX);
 }
 
 void NetworkMessage::addItem(uint16_t id, uint8_t count)
@@ -186,8 +171,24 @@ void NetworkMessage::addItem(const Item* item)
 
 		addByte(podium->getDirection());
 		addByte(podium->hasFlag(PODIUM_SHOW_PLATFORM) ? 0x01 : 0x00);
-		return;
 	}
 }
 
-void NetworkMessage::addItemId(uint16_t itemId) { add<uint16_t>(Item::items[itemId].clientId); }
+void NetworkMessage::addItemId(uint16_t itemId) {
+	add<uint16_t>(Item::items[itemId].clientId);
+}
+
+void NetworkMessage::dump(std::string_view name) const {
+	int len = getWrittenLength();
+	fmt::print("NetworkMessage ({}, rdpos={}, len={}):", name, rdpos, len);
+	for(int i = 0; i < len; i += 1){
+		if(i % 16 == 0){
+			fmt::print("\n");
+		}else{
+			fmt::print(" ");
+		}
+		fmt::print("{:02X}", buffer[i]);
+	}
+	fmt::print("\n");
+}
+

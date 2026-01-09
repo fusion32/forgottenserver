@@ -117,12 +117,13 @@ void Connection::accept()
 			    Connection::handleTimeout(thisPtr, error);
 		    });
 
-		// Read size of the first packet
-		auto bufferLength = !receivedLastChar && receivedName && connectionState == CONNECTION_STATE_GAMEWORLD_AUTH
-		                        ? 1
-		                        : NetworkMessage::HEADER_LENGTH;
+		int bufferLength = 2;
+		if(!receivedLastChar && receivedName && connectionState == CONNECTION_STATE_GAMEWORLD_AUTH){
+			bufferLength = 1;
+		}
+
 		boost::asio::async_read(
-		    socket, boost::asio::buffer(msg.getBuffer(), bufferLength),
+		    socket, boost::asio::buffer(msg.buffer.data(), bufferLength),
 		    [thisPtr = shared_from_this()](const boost::system::error_code& error, auto /*bytes_transferred*/) {
 			    thisPtr->parseHeader(error);
 		    });
@@ -152,9 +153,11 @@ void Connection::parseHeader(const boost::system::error_code& error)
 	}
 
 	if (!receivedLastChar && connectionState == CONNECTION_STATE_GAMEWORLD_AUTH) {
-		uint8_t* msgBuffer = msg.getBuffer();
-
-		if (!receivedName && msgBuffer[1] == 0x00) {
+		// TODO(fusion): This is probably not a good heuristic. If the first game
+		// packet surpases 255 bytes (which would only require a 2048-bit RSA key)
+		// then this suddenly starts to fail. Unless the client always begins with
+		// the world name, which seems to be the case nowadays so...
+		if (!receivedName && msg.buffer[1] == 0x00) {
 			receivedLastChar = true;
 		} else {
 			if (!receivedName) {
@@ -164,7 +167,7 @@ void Connection::parseHeader(const boost::system::error_code& error)
 				return;
 			}
 
-			if (msgBuffer[0] == 0x0A) {
+			if (msg.buffer[0] == 0x0A) {
 				receivedLastChar = true;
 			}
 
@@ -182,8 +185,12 @@ void Connection::parseHeader(const boost::system::error_code& error)
 		packetsSent = 0;
 	}
 
-	uint16_t size = msg.getLengthHeader();
-	if (size == 0 || size >= NETWORKMESSAGE_MAXSIZE - 16) {
+	// TODO(fusion): It seems that with the latest protocol, this value is turned
+	// into the number of XTEA blocks so we'd need to multiply by 8 and add the
+	// usual unencrypted header bytes for the checksum or sequence number.
+	//		=> packetLen = 4 + 8 * numBlocks.
+	int packetLen = ((uint16_t)msg.buffer[0] << 0) | ((uint16_t)msg.buffer[1] << 8);
+	if (packetLen <= 0 || packetLen > (int)msg.buffer.size()){
 		close(FORCE_CLOSE);
 		return;
 	}
@@ -196,9 +203,10 @@ void Connection::parseHeader(const boost::system::error_code& error)
 		    });
 
 		// Read packet content
-		msg.setLength(size + NetworkMessage::HEADER_LENGTH);
+		msg.rdpos = 0;
+		msg.wrpos = packetLen;
 		boost::asio::async_read(
-		    socket, boost::asio::buffer(msg.getBodyBuffer(), size),
+		    socket, boost::asio::buffer(msg.buffer.data(), packetLen),
 		    [thisPtr = shared_from_this()](const boost::system::error_code& error, auto /*bytes_transferred*/) {
 			    thisPtr->parsePacket(error);
 		    });
@@ -220,29 +228,15 @@ void Connection::parsePacket(const boost::system::error_code& error)
 		return;
 	}
 
-	// Read potential checksum bytes
-	msg.get<uint32_t>();
-
 	if (!receivedFirst) {
 		receivedFirst = true;
-
-		if (!protocol) {
-			// Skip deprecated checksum bytes (with clients that aren't using it in mind)
-			uint16_t len = msg.getLength();
-			if (len < 280 && len != 151) {
-				msg.skipBytes(-NetworkMessage::CHECKSUM_LENGTH);
-			}
-
-			// Game protocol has already been created at this point
+		if(!protocol){
 			protocol = service_port->make_protocol(msg, shared_from_this());
 			if (!protocol) {
 				close(FORCE_CLOSE);
 				return;
 			}
-		} else {
-			msg.skipBytes(1); // Skip protocol ID
 		}
-
 		protocol->onRecvFirstMessage(msg);
 	} else {
 		protocol->onRecvMessage(msg); // Send the packet to the current protocol
@@ -257,7 +251,7 @@ void Connection::parsePacket(const boost::system::error_code& error)
 
 		// Wait to the next packet
 		boost::asio::async_read(
-		    socket, boost::asio::buffer(msg.getBuffer(), NetworkMessage::HEADER_LENGTH),
+		    socket, boost::asio::buffer(msg.buffer.data(), 2),
 		    [thisPtr = shared_from_this()](const boost::system::error_code& error, auto /*bytes_transferred*/) {
 			    thisPtr->parseHeader(error);
 		    });
@@ -290,7 +284,12 @@ void Connection::send(const OutputMessage_ptr& msg)
 
 void Connection::internalSend(const OutputMessage_ptr& msg)
 {
-	protocol->onSendMessage(msg);
+	if(!protocol->wrapPacket(msg)){
+		std::cout << "Connection::internalSend: failed to wrap packet to "<< remoteAddress << std::endl;
+		close(FORCE_CLOSE);
+		return;
+	}
+
 	try {
 		writeTimer.expires_after(std::chrono::seconds(CONNECTION_WRITE_TIMEOUT));
 		writeTimer.async_wait(
@@ -299,7 +298,7 @@ void Connection::internalSend(const OutputMessage_ptr& msg)
 		    });
 
 		boost::asio::async_write(
-		    socket, boost::asio::buffer(msg->getOutputBuffer(), msg->getLength()),
+		    socket, boost::asio::buffer(msg->getOutputBuffer(), msg->getOutputLength()),
 		    [thisPtr = shared_from_this()](const boost::system::error_code& error, auto /*bytes_transferred*/) {
 			    thisPtr->onWriteOperation(error);
 		    });

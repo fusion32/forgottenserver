@@ -11,59 +11,51 @@
 class OutputMessage : public NetworkMessage
 {
 public:
-	OutputMessage() = default;
+	int start;
 
-	// non-copyable
-	OutputMessage(const OutputMessage&) = delete;
-	OutputMessage& operator=(const OutputMessage&) = delete;
+	OutputMessage() {
+		// NOTE(fusion): We need to leave some room for packet headers and the
+		// largest header is the one that goes with the Tibia packet. It should
+		// have the layout below, which roughly explains why we have 8 bytes of
+		// room for headers:
+		//
+		//	PLAINTEXT:
+		//		0 .. 2 => Packet Size
+		//		2 .. 6 => Checksum or Sequence Number
+		//	ENCRYPTED:
+		//		6 .. 8 => Payload Size
+		//		8 ..   => Payload + Padding
+		//
+		start = 8;
+		rdpos = start;
+		wrpos = start;
+	}
 
-	uint8_t* getOutputBuffer() { return &buffer[outputBufferStart]; }
-
-	void writeMessageLength() { add_header(info.length); }
-
-	void addCryptoHeader(checksumMode_t mode)
-	{
-		if (mode == CHECKSUM_ADLER) {
-			add_header(adlerChecksum(&buffer[outputBufferStart], info.length));
-		} else if (mode == CHECKSUM_SEQUENCE) {
-			add_header(getSequenceId());
+	uint8_t *getOutputBuffer() { return &buffer[start]; }
+	const uint8_t *getOutputBuffer() const { return &buffer[start]; }
+	int getOutputLength() const {
+		assert(wrpos >= start);
+		if(!isOverrun()){
+			return wrpos - start;
+		}else{
+			return 0;
 		}
+	}
 
-		writeMessageLength();
+	template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+	void addHeader(T value)
+	{
+		assert(start >= (int)sizeof(T));
+		start -= sizeof(T);
+		std::memcpy(&buffer[start], &value, sizeof(T));
 	}
 
 	void append(const NetworkMessage& msg)
 	{
-		auto msgLen = msg.getLength();
-		std::memcpy(buffer.data() + info.position, msg.getBuffer() + 8, msgLen);
-		info.length += msgLen;
-		info.position += msgLen;
+		if(!msg.isOverrun()){
+			addBytes(msg.buffer.data(), msg.wrpos);
+		}
 	}
-
-	void append(const OutputMessage_ptr& msg)
-	{
-		auto msgLen = msg->getLength();
-		std::memcpy(buffer.data() + info.position, msg->getBuffer() + 8, msgLen);
-		info.length += msgLen;
-		info.position += msgLen;
-	}
-
-	void setSequenceId(uint32_t sequence) { sequenceId = sequence; }
-	uint32_t getSequenceId() const { return sequenceId; }
-
-private:
-	template <typename T>
-	void add_header(T add)
-	{
-		assert(outputBufferStart >= sizeof(T));
-		outputBufferStart -= sizeof(T);
-		std::memcpy(buffer.data() + outputBufferStart, &add, sizeof(T));
-		// added header size to the message size
-		info.length += sizeof(T);
-	}
-
-	MsgSize_t outputBufferStart = INITIAL_BUFFER_POSITION;
-	uint32_t sequenceId;
 };
 
 namespace tfs::net {

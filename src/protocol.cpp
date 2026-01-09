@@ -11,38 +11,52 @@
 
 namespace {
 
-void XTEA_encrypt(OutputMessage& msg, const xtea::round_keys& key)
+bool XTEA_encrypt(OutputMessage& msg, const xtea::round_keys& key)
 {
-	// The message must be a multiple of 8
-	size_t paddingBytes = msg.getLength() % 8u;
-	if (paddingBytes != 0) {
-		msg.addPaddingBytes(8 - paddingBytes);
+	int xteaLen = msg.getOutputLength();
+	while(xteaLen % 8 != 0){
+		msg.addByte((uint8_t)rand());
+		xteaLen += 1;
 	}
 
-	uint8_t* buffer = msg.getOutputBuffer();
-	xtea::encrypt(buffer, msg.getLength(), key);
+	if(msg.isOverrun()){
+		return false;
+	}
+
+	xtea::encrypt(msg.getOutputBuffer(), xteaLen, key);
+	return true;
 }
 
 bool XTEA_decrypt(NetworkMessage& msg, const xtea::round_keys& key)
 {
-	if (((msg.getLength() - 6) & 7) != 0) {
+	if(msg.isOverrun()){
 		return false;
 	}
 
-	uint8_t* buffer = msg.getRemainingBuffer();
-	xtea::decrypt(buffer, msg.getLength() - 6, key);
+	int xteaLen = msg.getRemainingLength();
+	if(xteaLen % 8 != 0){
+		return false;
+	}
 
+	xtea::decrypt(msg.getRemainingBuffer(), xteaLen, key);
 	int payloadLen = msg.get<uint16_t>();
-	int messageLen = payloadLen + 8;
-	if (messageLen > msg.getLength()) {
+	int padding = xteaLen - (payloadLen + 2);
+	if(padding < 0){
 		return false;
 	}
 
-	msg.setLength(messageLen);
+	msg.discardPadding(padding);
 	return true;
 }
 
 } // namespace
+
+Protocol::Protocol(Connection_ptr connection) : connection(connection)
+{
+	if (deflateInit2(&zstream, 6, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+		std::cout << "ZLIB initialization error: " << (zstream.msg ? zstream.msg : "unknown") << std::endl;
+	}
+}
 
 Protocol::~Protocol()
 {
@@ -54,31 +68,50 @@ Protocol::~Protocol()
 	}
 }
 
-void Protocol::onSendMessage(const OutputMessage_ptr& msg)
+bool Protocol::wrapPacket(const OutputMessage_ptr& msg)
 {
+	if(msg->isOverrun()){
+		return false;
+	}
+
 	if (!rawMessages) {
-		if (encryptionEnabled && checksumMode == CHECKSUM_SEQUENCE) {
-			uint32_t compressionChecksum = 0;
-			if (msg->getLength() >= 128 && deflateMessage(*msg)) {
-				compressionChecksum = 0x80000000;
+		// NOTE(fusion): Each `addHeader` will change the output buffer length.
+		if(encryptionEnabled){
+			uint32_t checksum = 0;
+			if(checksumMode == CHECKSUM_ADLER){
+				checksum = adlerChecksum(msg->getOutputBuffer(), msg->getOutputLength());
+			}else if(checksumMode == CHECKSUM_SEQUENCE){
+				checksum = getNextSequenceId();
+				if(msg->getOutputLength() >= 128 && deflateMessage(*msg)){
+					checksum |= 0x80000000;
+				}
 			}
 
-			msg->setSequenceId(compressionChecksum | getNextSequenceId());
-		}
+			msg->addHeader<uint16_t>(msg->getOutputLength());
+			if(!XTEA_encrypt(*msg, key)){
+				return false;
+			}
 
-		msg->writeMessageLength();
-
-		if (encryptionEnabled) {
-			XTEA_encrypt(*msg, key);
-			msg->addCryptoHeader(checksumMode);
+			msg->addHeader<uint32_t>(checksum);
 		}
+		msg->addHeader<uint16_t>(msg->getOutputLength());
 	}
+
+	return true;
 }
 
 void Protocol::onRecvMessage(NetworkMessage& msg)
 {
-	if (encryptionEnabled && !XTEA_decrypt(msg, key)) {
-		return;
+	if(encryptionEnabled){
+		if(checksumMode != CHECKSUM_DISABLED){
+			// TODO(fusion): Actually verify checksum/sequence?
+			msg.get<uint32_t>();
+		}
+
+		if(!XTEA_decrypt(msg, key)){
+			std::cout << "Protocol::onRecvMessage: failed to decrypt XTEA message..." << std::endl;
+			return;
+		}
 	}
 
 	parsePacket(msg);
@@ -89,7 +122,7 @@ OutputMessage_ptr Protocol::getOutputBuffer(int32_t size)
 	// dispatcher thread
 	if (!outputBuffer) {
 		outputBuffer = tfs::net::make_output_message();
-	} else if ((outputBuffer->getLength() + size) > NetworkMessage::MAX_PROTOCOL_BODY_LENGTH) {
+	} else if (!outputBuffer->canAdd(size)) {
 		send(outputBuffer);
 		outputBuffer = tfs::net::make_output_message();
 	}
@@ -98,7 +131,7 @@ OutputMessage_ptr Protocol::getOutputBuffer(int32_t size)
 
 bool Protocol::RSA_decrypt(NetworkMessage& msg)
 {
-	if (msg.getRemainingBufferLength() < RSA_BUFFER_LENGTH) {
+	if (msg.getRemainingLength() < RSA_BUFFER_LENGTH) {
 		return false;
 	}
 
@@ -108,32 +141,43 @@ bool Protocol::RSA_decrypt(NetworkMessage& msg)
 
 bool Protocol::deflateMessage(OutputMessage& msg)
 {
-	static thread_local std::vector<uint8_t> buffer(NETWORKMESSAGE_MAXSIZE);
+	uint8_t *outputBuffer = msg.getOutputBuffer();
+	int uncompressedSize  = msg.getOutputLength();
+	if(uncompressedSize <= 0){
+		std::cout << "Protocol::deflateMessage: trying to compress empty message..." << std::endl;
+		return false;
+	}
 
-	zstream.next_in = msg.getOutputBuffer();
-	zstream.avail_in = msg.getLength();
+	std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
+	zstream.next_in = outputBuffer;
+	zstream.avail_in = uncompressedSize;
 	zstream.next_out = buffer.data();
 	zstream.avail_out = buffer.size();
 
-	const auto result = deflate(&zstream, Z_FINISH);
-	if (result != Z_OK && result != Z_STREAM_END) {
-		std::cout << "Error while deflating packet data error: " << (zstream.msg ? zstream.msg : "unknown")
-		          << std::endl;
+	int ret = deflate(&zstream, Z_FINISH);
+	if (ret != Z_STREAM_END) {
+		// NOTE(fusion): We can only get Z_OK here if the supplied buffer was
+		// too small.
+		if(ret != Z_OK){
+			std::cout << "Protocol::deflateMessage: failed to compress message: "
+						<< (zstream.msg ? zstream.msg : "unknown error")
+						<< std::endl;
+		}
 		return false;
 	}
 
-	const auto size = zstream.total_out;
+	int compressedSize = zstream.total_out;
 	deflateReset(&zstream);
 
-	if (size <= 0) {
-		std::cout << "Deflated packet data had invalid size: " << size
-		          << " error: " << (zstream.msg ? zstream.msg : "unknown") << std::endl;
+	// NOTE(fusion): It is very unlikely but compressed data may end up being
+	// larger if the uncompressed data has a lot of entropy (e.g. random or
+	// already compressed data).
+	if(compressedSize >= uncompressedSize){
 		return false;
 	}
 
-	msg.reset();
-	msg.addBytes(reinterpret_cast<const char*>(buffer.data()), size);
-
+	std::memcpy(outputBuffer, buffer.data(), compressedSize);
+	msg.wrpos -= (uncompressedSize - compressedSize);
 	return true;
 }
 

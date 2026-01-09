@@ -95,6 +95,7 @@ private:
 	void parseSay(NetworkMessage& msg);
 	void parseLookAt(NetworkMessage& msg);
 	void parseLookInBattleList(NetworkMessage& msg);
+	void parseQuickLoot(NetworkMessage& msg);
 	void parseFightModes(NetworkMessage& msg);
 	void parseAttack(NetworkMessage& msg);
 	void parseFollow(NetworkMessage& msg);

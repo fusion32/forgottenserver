@@ -12,12 +12,7 @@
 class Protocol : public std::enable_shared_from_this<Protocol>
 {
 public:
-	explicit Protocol(Connection_ptr connection) : connection(connection)
-	{
-		if (deflateInit2(&zstream, 6, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			std::cout << "ZLIB initialization error: " << (zstream.msg ? zstream.msg : "unknown") << std::endl;
-		}
-	}
+	explicit Protocol(Connection_ptr connection);
 	virtual ~Protocol();
 
 	// non-copyable
@@ -26,7 +21,7 @@ public:
 
 	virtual void parsePacket(NetworkMessage&) {}
 
-	virtual void onSendMessage(const OutputMessage_ptr& msg);
+	virtual bool wrapPacket(const OutputMessage_ptr& msg);
 	void onRecvMessage(NetworkMessage& msg);
 	virtual void onRecvFirstMessage(NetworkMessage& msg) = 0;
 	virtual void onConnect() {}
@@ -60,7 +55,7 @@ public:
 	}
 
 protected:
-	static constexpr size_t RSA_BUFFER_LENGTH = 128;
+	static constexpr int RSA_BUFFER_LENGTH = 128;
 
 	void disconnect() const
 	{

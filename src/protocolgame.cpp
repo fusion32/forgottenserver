@@ -22,6 +22,7 @@
 #include "podium.h"
 #include "scheduler.h"
 #include "storeinbox.h"
+#include "tasks.h"
 
 extern CreatureEvents* g_creatureEvents;
 extern Chat* g_chat;
@@ -343,20 +344,26 @@ void ProtocolGame::onRecvFirstMessage(NetworkMessage& msg)
 		return;
 	}
 
+	// TODO(fusion): Verify these values?? Maybe move them out to Protocol and
+	// have some `parseFirstPacket` similar to `onRecvMessage` and `parsePacket`.
+	msg.get<uint32_t>(); // checksum
+	msg.getByte();       // protocol id
+
 	// Client type and OS used
 	OperatingSystem_t operatingSystem = static_cast<OperatingSystem_t>(msg.get<uint16_t>());
 
-	version = msg.get<uint16_t>(); // U16 client version
-	msg.skipBytes(4);              // U32 client version
+	version = msg.get<uint16_t>(); // client version
+	msg.get<uint32_t>();           // client version (?)
 
 	// String client version
 	if (version >= 1240) {
-		if (msg.getRemainingBufferLength() > 132) {
+		if (msg.getRemainingLength() > 132) {
 			msg.getString();
 		}
 	}
 
-	msg.skipBytes(3); // U16 dat revision, U8 preview state
+	msg.get<uint16_t>(); // dat revision
+	msg.getByte();       // preview state
 
 	// Disconnect if RSA decrypt fails
 	if (!Protocol::RSA_decrypt(msg)) {
@@ -393,7 +400,7 @@ void ProtocolGame::onRecvFirstMessage(NetworkMessage& msg)
 		return;
 	}
 
-	msg.skipBytes(1); // Gamemaster flag
+	msg.getByte(); // gamemaster flag
 
 	auto sessionToken = tfs::base64::decode(msg.getString());
 	if (sessionToken.empty()) {
@@ -463,9 +470,6 @@ void ProtocolGame::onConnect()
 	static std::ranlux24 generator(rd());
 	static std::uniform_int_distribution<uint16_t> randNumber(0x00, 0xFF);
 
-	// Skip checksum
-	output->skipBytes(sizeof(uint32_t));
-
 	// Packet length & type
 	output->add<uint16_t>(0x0006);
 	output->addByte(0x1F);
@@ -477,10 +481,7 @@ void ProtocolGame::onConnect()
 	challengeRandom = randNumber(generator);
 	output->addByte(challengeRandom);
 
-	// Go back and write checksum
-	output->skipBytes(-12);
-	output->add<uint32_t>(adlerChecksum(output->getOutputBuffer() + sizeof(uint32_t), 8));
-
+	output->addHeader<uint32_t>(adlerChecksum(output->getOutputBuffer(), output->getOutputLength()));
 	send(output);
 }
 
@@ -496,23 +497,21 @@ void ProtocolGame::disconnectClient(const std::string& message) const
 
 void ProtocolGame::writeToOutputBuffer(const NetworkMessage& msg)
 {
-	auto out = getOutputBuffer(msg.getLength());
+	auto out = getOutputBuffer(msg.getWrittenLength());
 	out->append(msg);
 }
 
 void ProtocolGame::parsePacket(NetworkMessage& msg)
 {
-	if (!acceptPackets || g_game.getGameState() == GAME_STATE_SHUTDOWN || msg.isEmpty()) {
+	if (!acceptPackets || g_game.getGameState() == GAME_STATE_SHUTDOWN || !msg.canRead(1)){
 		return;
 	}
 
 	uint8_t recvbyte = msg.getByte();
-
 	if (!player) {
 		if (recvbyte == 0x0F) {
 			disconnect();
 		}
-
 		return;
 	}
 
@@ -659,7 +658,9 @@ void ProtocolGame::parsePacket(NetworkMessage& msg)
 			break;
 		case 0x8E: /* join aggression */
 			break;
-		// case 0x8F: break; // quick loot
+		case 0x8F:
+			parseQuickLoot(msg);
+			break;
 		// case 0x90: break; // loot container
 		// case 0x91: break; // update loot whitelist
 		// case 0x92: break; // request locker items
@@ -1021,19 +1022,16 @@ void ProtocolGame::parseOpenPrivateChannel(NetworkMessage& msg)
 
 void ProtocolGame::parseAutoWalk(NetworkMessage& msg)
 {
-	uint8_t numdirs = msg.getByte();
-	if (numdirs == 0 || (msg.getBufferPosition() + numdirs) != (msg.getLength() + 8)) {
+	int numDirections = (int)msg.getByte();
+	if(!msg.canRead(numDirections)){
+		sendCancelWalk();
 		return;
 	}
 
-	msg.skipBytes(numdirs);
-
 	std::vector<Direction> path;
-	path.reserve(numdirs);
-
-	for (uint8_t i = 0; i < numdirs; ++i) {
-		uint8_t rawdir = msg.getPreviousByte();
-		switch (rawdir) {
+	path.reserve(numDirections);
+	for(int i = 0; i < numDirections; i += 1){
+		switch(msg.getByte()){
 			case 1:
 				path.push_back(DIRECTION_EAST);
 				break;
@@ -1063,12 +1061,13 @@ void ProtocolGame::parseAutoWalk(NetworkMessage& msg)
 		}
 	}
 
-	if (path.empty()) {
-		return;
+	if(!path.empty()){
+		std::reverse(path.begin(), path.end());
+		g_dispatcher.addTask(
+			[playerID = player->getID(), path = std::move(path)] {
+				g_game.playerAutoWalk(playerID, path);
+			});
 	}
-
-	g_dispatcher.addTask(
-	    [playerID = player->getID(), path = std::move(path)]() { g_game.playerAutoWalk(playerID, path); });
 }
 
 void ProtocolGame::parseSetOutfit(NetworkMessage& msg)
@@ -1092,7 +1091,7 @@ void ProtocolGame::parseSetOutfit(NetworkMessage& msg)
 			newOutfit.lookMountLegs = msg.getByte();
 			newOutfit.lookMountFeet = msg.getByte();
 		} else {
-			msg.skipBytes(4);
+			msg.get<uint32_t>(); // ??
 
 			// prevent mount color settings from resetting
 			const Outfit_t& currentOutfit = player->getCurrentOutfit();
@@ -1218,7 +1217,7 @@ void ProtocolGame::parseThrow(NetworkMessage& msg)
 void ProtocolGame::parseLookAt(NetworkMessage& msg)
 {
 	Position pos = msg.getPosition();
-	msg.skipBytes(2); // spriteId
+	msg.get<uint16_t>(); // spriteId
 	uint8_t stackpos = msg.getByte();
 	g_dispatcher.addTask(DISPATCHER_TASK_EXPIRATION,
 	                     [=, playerID = player->getID()]() { g_game.playerLookAt(playerID, pos, stackpos); });
@@ -1229,6 +1228,20 @@ void ProtocolGame::parseLookInBattleList(NetworkMessage& msg)
 	uint32_t creatureID = msg.get<uint32_t>();
 	g_dispatcher.addTask(DISPATCHER_TASK_EXPIRATION,
 	                     [=, playerID = player->getID()]() { g_game.playerLookInBattleList(playerID, creatureID); });
+}
+
+void ProtocolGame::parseQuickLoot(NetworkMessage& msg)
+{
+	// TODO(fusion): This is a temporary measure to make looting corpses work
+	// when the client sends a quick loot message rather than a use.
+	Position pos = msg.getPosition();
+	uint16_t spriteId = msg.get<uint16_t>();
+	uint8_t stackpos = msg.getByte();
+	msg.getByte(); // quickLootAllCorpses
+	g_dispatcher.addTask(DISPATCHER_TASK_EXPIRATION,
+			[=, playerID = player->getID()]{
+				g_game.playerUseItem(playerID, pos, stackpos, 0, spriteId);
+			});
 }
 
 void ProtocolGame::parseSay(NetworkMessage& msg)

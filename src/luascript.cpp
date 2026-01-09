@@ -6272,7 +6272,8 @@ int LuaScriptInterface::luaNetworkMessageReset(lua_State* L)
 	// networkMessage:reset()
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message) {
-		message->reset();
+		message->rdpos = 0;
+		message->wrpos = 0;
 		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);
@@ -6285,7 +6286,9 @@ int LuaScriptInterface::luaNetworkMessageSeek(lua_State* L)
 	// networkMessage:seek(position)
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message && isNumber(L, 2)) {
-		tfs::lua::pushBoolean(L, message->setBufferPosition(tfs::lua::getNumber<uint16_t>(L, 2)));
+		// TODO(fusion): Probably have read/write variations?
+		message->wrpos = tfs::lua::getNumber<int>(L, 2);
+		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);
 	}
@@ -6297,7 +6300,8 @@ int LuaScriptInterface::luaNetworkMessageTell(lua_State* L)
 	// networkMessage:tell()
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message) {
-		lua_pushnumber(L, message->getBufferPosition() - message->INITIAL_BUFFER_POSITION);
+		// TODO(fusion): Probably have read/write variations?
+		lua_pushnumber(L, message->wrpos);
 	} else {
 		lua_pushnil(L);
 	}
@@ -6309,7 +6313,7 @@ int LuaScriptInterface::luaNetworkMessageLength(lua_State* L)
 	// networkMessage:len()
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message) {
-		lua_pushnumber(L, message->getLength());
+		lua_pushnumber(L, message->getWrittenLength());
 	} else {
 		lua_pushnil(L);
 	}
@@ -6322,7 +6326,7 @@ int LuaScriptInterface::luaNetworkMessageSkipBytes(lua_State* L)
 	int16_t number = tfs::lua::getNumber<int16_t>(L, 2);
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message) {
-		message->skipBytes(number);
+		message->rdpos += number;
 		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);
