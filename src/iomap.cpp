@@ -137,7 +137,7 @@ bool IOMap::loadMap(Map* map, const std::filesystem::path& fileName)
 				return false;
 			}
 		}
-	} catch (const OTB::InvalidOTBFormat& err) {
+	} catch (const std::exception& err) {
 		setLastErrorString(err.what());
 		return false;
 	}

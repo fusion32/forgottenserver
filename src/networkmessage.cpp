@@ -34,7 +34,7 @@ std::string NetworkMessage::getString(int stringLen /* = 0*/)
 
 	std::string result;
 	if (canRead(stringLen)) {
-		// NOTE(fusion): Same as `NetworkMessage::getString`.
+		// NOTE(fusion): Same as `NetworkMessage::addString`.
 		std::string_view latin1{(const char*)(&buffer[rdpos]), (size_t)stringLen};
 		result = boost::locale::conv::to_utf<char>(
 				latin1.data(), latin1.data() + latin1.size(),

@@ -19,7 +19,8 @@ bool Map::loadMap(const std::string& identifier, bool loadHouses, bool isCalledB
 {
 	IOMap loader;
 	if (!loader.loadMap(this, identifier)) {
-		std::cout << "[Fatal - Map::loadMap] " << loader.getLastErrorString() << std::endl;
+		std::cout << "Map::loadMap: failed to load map \"" << identifier << "\": "
+					<< loader.getLastErrorString() << std::endl;
 		return false;
 	}
 

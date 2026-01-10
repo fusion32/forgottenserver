@@ -66,26 +66,10 @@ void mainLoader(ServiceManager* services)
 
 	printServerVersion();
 
-	// check if config.lua or config.lua.dist exist
-	const std::string& configFile = getString(ConfigManager::CONFIG_FILE);
-	std::ifstream c_test("./" + configFile);
-	if (!c_test.is_open()) {
-		std::ifstream config_lua_dist("./config.lua.dist");
-		if (config_lua_dist.is_open()) {
-			std::cout << ">> copying config.lua.dist to " << configFile << std::endl;
-			std::ofstream config_lua(configFile);
-			config_lua << config_lua_dist.rdbuf();
-			config_lua.close();
-			config_lua_dist.close();
-		}
-	} else {
-		c_test.close();
-	}
-
 	// read global config
 	std::cout << ">> Loading config" << std::endl;
 	if (!ConfigManager::load()) {
-		startupErrorMessage("Unable to load " + configFile + "!");
+		startupErrorMessage("Unable to load " + getString(ConfigManager::CONFIG_FILE) + "!");
 		return;
 	}
 
@@ -308,26 +292,27 @@ void printServerVersion()
 #else
 	std::cout << STATUS_SERVER_NAME << " - Version " << STATUS_SERVER_VERSION << std::endl;
 #endif
-	std::cout << std::endl;
 
 	std::cout << "Compiled with " << BOOST_COMPILER << std::endl;
 	std::cout << "Compiled on " << __DATE__ << ' ' << __TIME__ << " for platform ";
 #if defined(__amd64__) || defined(_M_X64)
-	std::cout << "x64" << std::endl;
+	std::cout << "x64";
 #elif defined(__i386__) || defined(_M_IX86) || defined(_X86_)
-	std::cout << "x86" << std::endl;
+	std::cout << "x86";
 #elif defined(__arm__)
-	std::cout << "ARM" << std::endl;
+	std::cout << "ARM";
 #else
-	std::cout << "unknown" << std::endl;
-#endif
-#if defined(LUAJIT_VERSION)
-	std::cout << "Linked with " << LUAJIT_VERSION << " for Lua support" << std::endl;
-#else
-	std::cout << "Linked with " << LUA_RELEASE << " for Lua support" << std::endl;
+	std::cout << "unknown";
 #endif
 	std::cout << std::endl;
 
+#if defined(LUAJIT_VERSION)
+	std::cout << "Linked with " << LUAJIT_VERSION << std::endl;
+#else
+	std::cout << "Linked with " << LUA_RELEASE << std::endl;
+#endif
+
+	std::cout << std::endl;
 	std::cout << "A server developed by " << STATUS_SERVER_DEVELOPERS << std::endl;
 	std::cout << "Visit our forum for updates, support, and resources: https://otland.net/." << std::endl;
 	std::cout << std::endl;
