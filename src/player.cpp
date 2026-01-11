@@ -1006,14 +1006,17 @@ void Player::sendUpdateContainerItem(const Container* container, int index, cons
 		return;
 	}
 
+	// NOTE(fusion): This is called AFTER the item update but no items are added
+	// or removed so it can't be empty.
+	assert(container->size() > 0);
 	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
 		if(openContainers[cid].container != container){
 			continue;
 		}
 
 		int firstIndex = openContainers[cid].firstIndex;
-		int pageEnd = firstIndex + container->capacity();
-		if(index >= firstIndex && index < pageEnd){
+		int lastPageIndex = firstIndex + container->capacity() - 1;
+		if(index >= firstIndex && index <= lastPageIndex){
 			client->sendUpdateContainerItem(cid, index, newItem);
 		}
 	}
