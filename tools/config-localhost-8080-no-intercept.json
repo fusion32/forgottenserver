@@ -1,0 +1,27 @@
+{
+    "URLs": {
+        "tibiaPageUrl":                 "",
+        "tibiaStoreGetCoinsUrl":        "",
+        "getPremiumUrl":                "",
+        "createAccountUrl":             "",
+        "createTournamentCharacterUrl": "",
+        "accessAccountUrl":             "",
+        "lostAccountUrl":               "",
+        "manualUrl":                    "",
+        "faqUrl":                       "",
+        "premiumFeaturesUrl":           "",
+        "limesurveyUrl":                "",
+        "hintsUrl":                     "",
+        "cipSoftUrl":                   "",
+        "twitchTibiaUrl":               "",
+        "youTubeTibiaUrl":              "",
+        "crashReportUrl":               "",
+        "fpsHistoryRecipient":          "",
+        "tutorialProgressWebService":   "",
+        "tournamentDetailsUrl":         "",
+        "loginWebService":              "http://localhost:8080/loginservice.php",
+        "clientWebService":             "http://localhost:8080/clientservices.php"
+    },
+
+    "RSAModulus": ""
+}
