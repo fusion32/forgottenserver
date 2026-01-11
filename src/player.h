@@ -66,10 +66,11 @@ struct VIPEntry
 	bool notify;
 };
 
+static constexpr int PLAYER_MAX_OPEN_CONTAINERS = 16;
 struct OpenContainer
 {
-	Container* container;
-	uint16_t index;
+	Container *container = NULL;
+	int firstIndex = 0;
 };
 
 static constexpr int16_t MINIMUM_SKILL_LEVEL = 10;
@@ -247,13 +248,14 @@ public:
 	}
 	Connection::Address getIP() const;
 
-	void addContainer(uint8_t cid, Container* container);
-	void closeContainer(uint8_t cid);
-	void setContainerIndex(uint8_t cid, uint16_t index);
-
-	Container* getContainerByID(uint8_t cid);
-	int8_t getContainerID(const Container* container) const;
-	uint16_t getContainerIndex(uint8_t cid) const;
+	void addContainer(int cid, Container* container);
+	void closeContainer(int cid);
+	void setContainerFirstIndex(int cid, int firstIndex);
+	Container* getContainerByID(int cid);
+	int getContainerID(const Container* container) const;
+	int getContainerFirstIndex(int cid) const;
+	int findAvailableContainerID(void) const;
+	const auto &getOpenContainers() const { return openContainers; }
 
 	bool canOpenCorpse(uint32_t ownerId) const;
 
@@ -732,8 +734,8 @@ public:
 
 	// container
 	void sendAddContainerItem(const Container* container, const Item* item);
-	void sendUpdateContainerItem(const Container* container, uint16_t slot, const Item* newItem);
-	void sendRemoveContainerItem(const Container* container, uint16_t slot);
+	void sendUpdateContainerItem(const Container* container, int index, const Item* newItem);
+	void sendRemoveContainerItem(const Container* container, int index);
 	void sendContainer(uint8_t cid, const Container* container, uint16_t firstIndex)
 	{
 		if (client) {
@@ -1151,8 +1153,6 @@ public:
 
 	void updateRegeneration();
 
-	const std::map<uint8_t, OpenContainer>& getOpenContainers() const { return openContainers; }
-
 	uint16_t getClientExpDisplay() const { return clientExpDisplay; }
 	void setClientExpDisplay(uint16_t value) { clientExpDisplay = value; }
 
@@ -1210,7 +1210,7 @@ private:
 	std::unordered_set<uint32_t> attackedSet;
 	std::unordered_set<uint32_t> VIPList;
 
-	std::map<uint8_t, OpenContainer> openContainers;
+	std::array<OpenContainer, PLAYER_MAX_OPEN_CONTAINERS> openContainers;
 	std::map<uint32_t, DepotChest_ptr> depotChests;
 
 	std::map<uint16_t, uint8_t> outfits;

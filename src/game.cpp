@@ -287,7 +287,7 @@ Thing* Game::internalGetThing(Player* player, const Position& pos, int32_t index
 		}
 
 		uint8_t slot = pos.z;
-		return parentContainer->getItemByIndex(player->getContainerIndex(fromCid) + slot);
+		return parentContainer->getItemByIndex(player->getContainerFirstIndex(fromCid) + slot);
 	} else if (pos.y == 0 && pos.z == 0) {
 		const ItemType& it = Item::items.getItemIdByClientId(spriteId);
 		if (it.id == 0) {
@@ -2329,6 +2329,20 @@ void Game::playerUseWithCreature(uint32_t playerId, const Position& fromPos, uin
 	                     isHotkey, creature);
 }
 
+void Game::playerQuickLoot(uint32_t playerId, const Position &pos, uint8_t stackPos,
+						uint16_t spriteId, bool quickLootAllCorpses){
+	Player* player = getPlayerByID(playerId);
+	if (!player) {
+		return;
+	}
+
+	// TODO(fusion): This is a temporary measure to make looting corpses work
+	// when the client sends a quick loot message rather than a use.
+	(void)quickLootAllCorpses;
+	int containerID = player->findAvailableContainerID();
+	playerUseItem(playerId, pos, stackPos, (uint8_t)containerID, spriteId);
+}
+
 void Game::playerCloseContainer(uint32_t playerId, uint8_t cid)
 {
 	Player* player = getPlayerByID(playerId);
@@ -2376,7 +2390,7 @@ void Game::playerMoveUpContainer(uint32_t playerId, uint8_t cid)
 	}
 
 	player->addContainer(cid, parentContainer);
-	player->sendContainer(cid, parentContainer, player->getContainerIndex(cid));
+	player->sendContainer(cid, parentContainer, player->getContainerFirstIndex(cid));
 }
 
 void Game::playerUpdateContainer(uint32_t playerId, uint8_t cid)
@@ -2391,7 +2405,7 @@ void Game::playerUpdateContainer(uint32_t playerId, uint8_t cid)
 		return;
 	}
 
-	player->sendContainer(cid, container, player->getContainerIndex(cid));
+	player->sendContainer(cid, container, player->getContainerFirstIndex(cid));
 }
 
 void Game::playerRotateItem(uint32_t playerId, const Position& pos, uint8_t stackPos, const uint16_t spriteId)
@@ -2571,7 +2585,7 @@ void Game::playerSeekInContainer(uint32_t playerId, uint8_t containerId, uint16_
 		return;
 	}
 
-	player->setContainerIndex(containerId, index);
+	player->setContainerFirstIndex(containerId, index);
 	player->sendContainer(containerId, container, index);
 }
 

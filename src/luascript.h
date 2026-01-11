@@ -775,7 +775,7 @@ private:
 
 	static int luaPlayerGetContainerId(lua_State* L);
 	static int luaPlayerGetContainerById(lua_State* L);
-	static int luaPlayerGetContainerIndex(lua_State* L);
+	static int luaPlayerGetContainerFirstIndex(lua_State* L);
 
 	static int luaPlayerGetRuneSpells(lua_State* L);
 	static int luaPlayerGetInstantSpells(lua_State* L);

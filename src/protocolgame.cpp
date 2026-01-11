@@ -1232,15 +1232,13 @@ void ProtocolGame::parseLookInBattleList(NetworkMessage& msg)
 
 void ProtocolGame::parseQuickLoot(NetworkMessage& msg)
 {
-	// TODO(fusion): This is a temporary measure to make looting corpses work
-	// when the client sends a quick loot message rather than a use.
 	Position pos = msg.getPosition();
 	uint16_t spriteId = msg.get<uint16_t>();
 	uint8_t stackpos = msg.getByte();
-	msg.getByte(); // quickLootAllCorpses
+	bool quickLootAllCorpses = msg.getByte() != 0;
 	g_dispatcher.addTask(DISPATCHER_TASK_EXPIRATION,
 			[=, playerID = player->getID()]{
-				g_game.playerUseItem(playerID, pos, stackpos, 0, spriteId);
+				g_game.playerQuickLoot(playerID, pos, stackpos, spriteId, quickLootAllCorpses);
 			});
 }
 
@@ -1935,12 +1933,14 @@ void ProtocolGame::sendContainer(uint8_t cid, const Container* container, uint16
 	msg.add<uint16_t>(containerSize);
 	msg.add<uint16_t>(firstIndex);
 	if (firstIndex < containerSize) {
-		uint8_t itemsToSend = std::min<uint32_t>(std::min<uint32_t>(container->capacity(), containerSize - firstIndex),
-		                                         std::numeric_limits<uint8_t>::max());
+		int itemsToSend = std::min<int>(container->capacity(), containerSize - firstIndex);
+		if(itemsToSend > UINT8_MAX){
+			itemsToSend = UINT8_MAX;
+		}
 
-		msg.addByte(itemsToSend);
-		for (auto it = container->getItemList().begin() + firstIndex, end = it + itemsToSend; it != end; ++it) {
-			msg.addItem(*it);
+		msg.addByte((uint8_t)itemsToSend);
+		for(int i = 0; i < itemsToSend; i += 1){
+			msg.addItem(container->getItemByIndex(firstIndex + i));
 		}
 	} else {
 		msg.addByte(0x00);
@@ -2918,7 +2918,11 @@ void ProtocolGame::sendAddContainerItem(uint8_t cid, uint16_t slot, const Item* 
 	msg.addByte(0x70);
 	msg.addByte(cid);
 	msg.add<uint16_t>(slot);
-	msg.addItem(item);
+	if(item){
+		msg.addItem(item);
+	}else{
+		msg.add<uint16_t>(0x00);
+	}
 	writeToOutputBuffer(msg);
 }
 

@@ -336,6 +336,8 @@ public:
 	void playerUseItem(uint32_t playerId, const Position& pos, uint8_t stackPos, uint8_t index, uint16_t spriteId);
 	void playerUseWithCreature(uint32_t playerId, const Position& fromPos, uint8_t fromStackPos, uint32_t creatureId,
 	                           uint16_t spriteId);
+	void playerQuickLoot(uint32_t playerId, const Position &pos, uint8_t stackPos,
+							uint16_t spriteId, bool quickLootAllCorpses);
 	void playerCloseContainer(uint32_t playerId, uint8_t cid);
 	void playerMoveUpContainer(uint32_t playerId, uint8_t cid);
 	void playerUpdateContainer(uint32_t playerId, uint8_t cid);

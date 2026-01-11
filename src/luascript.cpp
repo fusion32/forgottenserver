@@ -2880,7 +2880,7 @@ void LuaScriptInterface::registerFunctions()
 
 	registerMethod(L, "Player", "getContainerId", LuaScriptInterface::luaPlayerGetContainerId);
 	registerMethod(L, "Player", "getContainerById", LuaScriptInterface::luaPlayerGetContainerById);
-	registerMethod(L, "Player", "getContainerIndex", LuaScriptInterface::luaPlayerGetContainerIndex);
+	registerMethod(L, "Player", "getContainerFirstIndex", LuaScriptInterface::luaPlayerGetContainerFirstIndex);
 
 	registerMethod(L, "Player", "getRuneSpells", LuaScriptInterface::luaPlayerGetRuneSpells);
 	registerMethod(L, "Player", "getInstantSpells", LuaScriptInterface::luaPlayerGetInstantSpells);
@@ -11079,12 +11079,12 @@ int LuaScriptInterface::luaPlayerGetContainerById(lua_State* L)
 	return 1;
 }
 
-int LuaScriptInterface::luaPlayerGetContainerIndex(lua_State* L)
+int LuaScriptInterface::luaPlayerGetContainerFirstIndex(lua_State* L)
 {
-	// player:getContainerIndex(id)
+	// player:getContainerFirstIndex(id)
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (player) {
-		lua_pushnumber(L, player->getContainerIndex(tfs::lua::getNumber<uint8_t>(L, 2)));
+		lua_pushnumber(L, player->getContainerFirstIndex(tfs::lua::getNumber<uint8_t>(L, 2)));
 	} else {
 		lua_pushnil(L);
 	}

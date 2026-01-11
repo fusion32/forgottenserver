@@ -355,7 +355,6 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 
 	// load inventory items
 	ItemMap itemMap;
-	std::map<uint8_t, Container*> openContainersList;
 
 	if ((result = db.storeQuery(fmt::format(
 	         "SELECT `pid`, `sid`, `itemtype`, `count`, `attributes` FROM `player_items` WHERE `player_id` = {:d} ORDER BY `sid` DESC",
@@ -366,14 +365,6 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 			const std::pair<Item*, int32_t>& pair = it->second;
 			Item* item = pair.first;
 			int32_t pid = pair.second;
-
-			Container* itemContainer = item->getContainer();
-			if (itemContainer) {
-				uint8_t cid = item->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER);
-				if (cid > 0) {
-					openContainersList.emplace(cid, itemContainer);
-				}
-			}
 
 			if (pid >= CONST_SLOT_FIRST && pid <= CONST_SLOT_LAST) {
 				player->internalAddThing(pid, item);
@@ -389,11 +380,6 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 				}
 			}
 		}
-	}
-
-	for (auto& it : openContainersList) {
-		player->addContainer(it.first - 1, it.second);
-		player->onSendContainer(it.second);
 	}
 
 	// load depot items
@@ -533,8 +519,6 @@ bool IOLoginData::saveItems(const Player* player, const ItemBlockList& itemList,
 	containers.reserve(32);
 
 	int32_t runningId = 100;
-	const auto& openContainers = player->getOpenContainers();
-
 	Database& db = Database::getInstance();
 	for (const auto& it : itemList) {
 		int32_t pid = it.first;
@@ -546,16 +530,9 @@ bool IOLoginData::saveItems(const Player* player, const ItemBlockList& itemList,
 				container->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, 0);
 			}
 
-			if (!openContainers.empty()) {
-				for (const auto& its : openContainers) {
-					auto openContainer = its.second;
-					auto opcontainer = openContainer.container;
-
-					if (opcontainer == container) {
-						container->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, static_cast<int64_t>(its.first) + 1);
-						break;
-					}
-				}
+			int cid = player->getContainerID(container);
+			if(cid != -1){
+				container->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, cid + 1);
 			}
 
 			containers.emplace_back(container, runningId);
@@ -583,20 +560,13 @@ bool IOLoginData::saveItems(const Player* player, const ItemBlockList& itemList,
 			if (subContainer) {
 				containers.emplace_back(subContainer, runningId);
 
-				if (subContainer->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER)) {
+				// NOTE(fusion): We could get rid of the "else" branch here but
+				// it's better to have it for readability.
+				int cid = player->getContainerID(subContainer);
+				if(cid != -1){
+					subContainer->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, cid + 1);
+				}else{
 					subContainer->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, 0);
-				}
-
-				if (!openContainers.empty()) {
-					for (const auto& it : openContainers) {
-						auto openContainer = it.second;
-						auto opcontainer = openContainer.container;
-
-						if (opcontainer == subContainer) {
-							subContainer->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, it.first + 1);
-							break;
-						}
-					}
 				}
 			}
 

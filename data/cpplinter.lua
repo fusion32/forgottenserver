@@ -460,7 +460,7 @@ Creature = {}
 ---@field setGhostMode fun(self: Player, active: boolean)
 ---@field getContainerId fun(self: Player, index: number): number
 ---@field getContainerById fun(self: Player, containerId: number): Container
----@field getContainerIndex fun(self: Player, containerId: number): number
+---@field getContainerFirstIndex fun(self: Player, containerId: number): number
 ---@field getInstantSpells fun(self: Player): table
 ---@field canCast fun(self: Player, spellId: number): boolean
 ---@field hasChaseMode fun(self: Player): boolean

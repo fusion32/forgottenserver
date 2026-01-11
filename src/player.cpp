@@ -9,6 +9,7 @@
 #include "chat.h"
 #include "combat.h"
 #include "configmanager.h"
+#include "const.h"
 #include "creatureevent.h"
 #include "depotchest.h"
 #include "events.h"
@@ -608,9 +609,9 @@ int32_t Player::getDefaultStats(stats_t stat) const
 	}
 }
 
-void Player::addContainer(uint8_t cid, Container* container)
+void Player::addContainer(int cid, Container* container)
 {
-	if (cid > 0xF) {
+	if (cid < 0 || cid >= PLAYER_MAX_OPEN_CONTAINERS) {
 		return;
 	}
 
@@ -618,75 +619,80 @@ void Player::addContainer(uint8_t cid, Container* container)
 		container->incrementReferenceCounter();
 	}
 
-	auto it = openContainers.find(cid);
-	if (it != openContainers.end()) {
-		OpenContainer& openContainer = it->second;
-		Container* oldContainer = openContainer.container;
-		if (oldContainer->getID() == ITEM_BROWSEFIELD) {
-			oldContainer->decrementReferenceCounter();
-		}
 
-		openContainer.container = container;
-		openContainer.index = 0;
-	} else {
-		OpenContainer openContainer;
-		openContainer.container = container;
-		openContainer.index = 0;
-		openContainers[cid] = openContainer;
+	Container *oldContainer = openContainers[cid].container;
+	if(oldContainer && oldContainer->getID() == ITEM_BROWSEFIELD){
+		oldContainer->decrementReferenceCounter();
 	}
+
+	openContainers[cid].container = container;
+	openContainers[cid].firstIndex = 0;
 }
 
-void Player::closeContainer(uint8_t cid)
+void Player::closeContainer(int cid)
 {
-	auto it = openContainers.find(cid);
-	if (it == openContainers.end()) {
+	if (cid < 0 || cid >= PLAYER_MAX_OPEN_CONTAINERS) {
 		return;
 	}
 
-	OpenContainer openContainer = it->second;
-	Container* container = openContainer.container;
-	openContainers.erase(it);
-
-	if (container && container->getID() == ITEM_BROWSEFIELD) {
-		container->decrementReferenceCounter();
+	Container *oldContainer = openContainers[cid].container;
+	if(oldContainer && oldContainer->getID() == ITEM_BROWSEFIELD){
+		oldContainer->decrementReferenceCounter();
 	}
+
+	openContainers[cid].container = NULL;
+	openContainers[cid].firstIndex = 0;
 }
 
-void Player::setContainerIndex(uint8_t cid, uint16_t index)
+void Player::setContainerFirstIndex(int cid, int firstIndex)
 {
-	auto it = openContainers.find(cid);
-	if (it == openContainers.end()) {
+	if (cid < 0 || cid >= PLAYER_MAX_OPEN_CONTAINERS) {
 		return;
 	}
-	it->second.index = index;
+
+	openContainers[cid].firstIndex = firstIndex;
 }
 
-Container* Player::getContainerByID(uint8_t cid)
+Container* Player::getContainerByID(int cid)
 {
-	auto it = openContainers.find(cid);
-	if (it == openContainers.end()) {
-		return nullptr;
+	if (cid < 0 || cid >= PLAYER_MAX_OPEN_CONTAINERS) {
+		return NULL;
 	}
-	return it->second.container;
+
+	return openContainers[cid].container;
 }
 
-int8_t Player::getContainerID(const Container* container) const
+int Player::getContainerID(const Container* container) const
 {
-	for (const auto& it : openContainers) {
-		if (it.second.container == container) {
-			return it.first;
+	if(container){
+		for (int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+			if(openContainers[cid].container == container){
+				return cid;
+			}
 		}
 	}
 	return -1;
 }
 
-uint16_t Player::getContainerIndex(uint8_t cid) const
+int Player::getContainerFirstIndex(int cid) const
 {
-	auto it = openContainers.find(cid);
-	if (it == openContainers.end()) {
+	if (cid < 0 || cid >= PLAYER_MAX_OPEN_CONTAINERS) {
 		return 0;
 	}
-	return it->second.index;
+
+	return openContainers[cid].firstIndex;
+}
+
+int Player::findAvailableContainerID(void) const
+{
+	for (int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if(openContainers[cid].container == NULL){
+			return cid;
+		}
+	}
+
+	// NOTE(fusion): All container slots are taken, so we pick one at random.
+	return uniform_random(0, PLAYER_MAX_OPEN_CONTAINERS - 1);
 }
 
 bool Player::canOpenCorpse(uint32_t ownerId) const
@@ -967,102 +973,109 @@ void Player::sendAddContainerItem(const Container* container, const Item* item)
 		return;
 	}
 
-	for (const auto& it : openContainers) {
-		const OpenContainer& openContainer = it.second;
-		if (openContainer.container != container) {
+	// NOTE(fusion): This is called AFTER the item is added so it can't be empty.
+	assert(container->size() > 0);
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if(openContainers[cid].container != container){
 			continue;
 		}
 
-		uint16_t slot = openContainer.index;
-		if (container->getID() == ITEM_BROWSEFIELD) {
-			uint16_t containerSize = container->size() - 1;
-			uint16_t pageEnd = openContainer.index + container->capacity() - 1;
-			if (containerSize > pageEnd) {
-				slot = pageEnd;
-				item = container->getItemByIndex(pageEnd);
-			} else {
-				slot = containerSize;
+		// NOTE(fusion): The browse field container add items to the end of the
+		// list instead of the beggining so we need to handle it separately here.
+		int index = 0;
+		int firstIndex = openContainers[cid].firstIndex;
+		if(container->getID() == ITEM_BROWSEFIELD){
+			index = container->size() - 1;
+
+			int lastPageIndex = firstIndex + container->capacity() - 1;
+			if(index > lastPageIndex){
+				item = NULL;
 			}
-		} else if (openContainer.index >= container->capacity()) {
-			item = container->getItemByIndex(openContainer.index);
+		}else if(firstIndex > 0){
+			index = firstIndex;
+			item = container->getItemByIndex(firstIndex);
 		}
 
-		if (item) {
-			client->sendAddContainerItem(it.first, slot, item);
-		}
+		client->sendAddContainerItem(cid, index, item);
 	}
 }
 
-void Player::sendUpdateContainerItem(const Container* container, uint16_t slot, const Item* newItem)
+void Player::sendUpdateContainerItem(const Container* container, int index, const Item* newItem)
 {
 	if (!client) {
 		return;
 	}
 
-	for (const auto& it : openContainers) {
-		const OpenContainer& openContainer = it.second;
-		if (openContainer.container != container) {
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if(openContainers[cid].container != container){
 			continue;
 		}
 
-		if (slot < openContainer.index) {
-			continue;
+		int firstIndex = openContainers[cid].firstIndex;
+		int pageEnd = firstIndex + container->capacity();
+		if(index >= firstIndex && index < pageEnd){
+			client->sendUpdateContainerItem(cid, index, newItem);
 		}
-
-		uint16_t pageEnd = openContainer.index + container->capacity();
-		if (slot >= pageEnd) {
-			continue;
-		}
-
-		client->sendUpdateContainerItem(it.first, slot, newItem);
 	}
 }
 
-void Player::sendRemoveContainerItem(const Container* container, uint16_t slot)
+void Player::sendRemoveContainerItem(const Container* container, int index)
 {
 	if (!client) {
 		return;
 	}
 
-	for (auto& it : openContainers) {
-		OpenContainer& openContainer = it.second;
-		if (openContainer.container != container) {
+	// NOTE(fusion): This is called BEFORE the item is removed so it can't be empty.
+	assert(container->size() > 0);
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if(openContainers[cid].container != container){
 			continue;
 		}
 
-		uint16_t& firstIndex = openContainer.index;
-		if (firstIndex > 0 && firstIndex >= container->size() - 1) {
+		int firstIndex = openContainers[cid].firstIndex;
+		int lastContainerIndex = container->size() - 1;
+		if(firstIndex > 0 && firstIndex >= lastContainerIndex){
 			firstIndex -= container->capacity();
-			sendContainer(it.first, container, firstIndex);
+			if(firstIndex < 0){
+				firstIndex = 0;
+			}
+
+			openContainers[cid].firstIndex = firstIndex;
+			sendContainer(cid, container, firstIndex);
 		}
 
-		client->sendRemoveContainerItem(it.first, std::max<uint16_t>(slot, firstIndex),
-		                                container->getItemByIndex(container->capacity() + firstIndex));
+		const Item *lastItem = NULL;
+		int lastPageIndex = firstIndex + container->capacity() - 1;
+		if(index >= firstIndex && index <= lastPageIndex){
+			lastItem = container->getItemByIndex(lastPageIndex + 1);
+		}
+
+		client->sendRemoveContainerItem(cid, std::max<int>(index, firstIndex), lastItem);
 	}
 }
 
 void Player::openSavedContainers()
 {
-	std::map<uint8_t, Container*> openContainersList;
-
+	std::vector<std::pair<int, Container*>> openList;
 	for (int32_t i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; i++) {
 		Item* item = inventory[i];
 		if (!item) {
 			continue;
 		}
 
-		Container* itemContainer = item->getContainer();
-		if (itemContainer) {
-			uint8_t cid = item->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER);
+		Container* container = item->getContainer();
+		if (container) {
+			int cid = item->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER);
 			if (cid > 0) {
-				openContainersList.emplace(cid, itemContainer);
+				openList.push_back({cid - 1, container});
 			}
-			for (ContainerIterator it = itemContainer->iterator(); it.hasNext(); it.advance()) {
+
+			for (ContainerIterator it = container->iterator(); it.hasNext(); it.advance()) {
 				Container* subContainer = (*it)->getContainer();
 				if (subContainer) {
-					uint8_t subcid = (*it)->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER);
+					int subcid = (*it)->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER);
 					if (subcid > 0) {
-						openContainersList.emplace(subcid, subContainer);
+						openList.push_back({subcid - 1, subContainer});
 					}
 				}
 			}
@@ -1070,14 +1083,14 @@ void Player::openSavedContainers()
 	}
 
 	// fix broken containers when logged in from another location
-	for (uint8_t i = 0; i < 16; i++) {
-		client->sendEmptyContainer(i);
-		client->sendCloseContainer(i);
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		client->sendEmptyContainer(cid);
+		client->sendCloseContainer(cid);
 	}
 
 	// send actual containers
-	for (auto& it : openContainersList) {
-		addContainer(it.first - 1, it.second);
+	for (const auto &it: openList) {
+		addContainer(it.first, it.second);
 		onSendContainer(it.second);
 	}
 }
@@ -1459,9 +1472,9 @@ void Player::onCloseContainer(const Container* container)
 		return;
 	}
 
-	for (const auto& it : openContainers) {
-		if (it.second.container == container) {
-			client->sendCloseContainer(it.first);
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if (openContainers[cid].container == container) {
+			client->sendCloseContainer(cid);
 		}
 	}
 }
@@ -1472,10 +1485,9 @@ void Player::onSendContainer(const Container* container)
 		return;
 	}
 
-	for (const auto& it : openContainers) {
-		const OpenContainer& openContainer = it.second;
-		if (openContainer.container == container) {
-			client->sendContainer(it.first, container, openContainer.index);
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		if (openContainers[cid].container == container) {
+			client->sendContainer(cid, container, openContainers[cid].firstIndex);
 		}
 	}
 }
@@ -2378,12 +2390,12 @@ bool Player::editVIP(uint32_t vipGuid, const std::string& description, uint32_t 
 // close container and its child containers
 void Player::autoCloseContainers(const Container* container)
 {
-	std::vector<uint32_t> closeList;
-	for (const auto& it : openContainers) {
-		Container* tmpContainer = it.second.container;
+	std::vector<int> closeList;
+	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+		Container* tmpContainer = openContainers[cid].container;
 		while (tmpContainer) {
 			if (tmpContainer->isRemoved() || tmpContainer == container) {
-				closeList.push_back(it.first);
+				closeList.push_back(cid);
 				break;
 			}
 
@@ -2391,10 +2403,10 @@ void Player::autoCloseContainers(const Container* container)
 		}
 	}
 
-	for (uint32_t containerId : closeList) {
-		closeContainer(containerId);
+	for (int cid: closeList) {
+		closeContainer(cid);
 		if (client) {
-			client->sendCloseContainer(containerId);
+			client->sendCloseContainer(cid);
 		}
 	}
 }
@@ -3169,9 +3181,9 @@ void Player::postAddNotification(Thing* thing, const Thing* oldParent, int32_t i
 			// check containers
 			std::vector<Container*> containers;
 
-			for (const auto& it : openContainers) {
-				Container* container = it.second.container;
-				if (!container->getPosition().isInRange(getPosition(), 1, 1, 0)) {
+			for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
+				Container* container = openContainers[cid].container;
+				if (container && !container->getPosition().isInRange(getPosition(), 1, 1, 0)) {
 					containers.push_back(container);
 				}
 			}
