@@ -4,12 +4,6 @@
 #include <iostream>
 #include <mutex>
 
-// NOTE(fusion): Although the feature for running coroutines in parallel is still
-// in the experimental namespace, it has been implemented ever since ASIO 1.21
-// which is already ~5 years old and presumably production-ready.
-#include <boost/asio/experimental/awaitable_operators.hpp>
-using namespace boost::asio::experimental::awaitable_operators;
-
 namespace asio = boost::asio;
 namespace chrono = std::chrono;
 using asio::use_awaitable;
@@ -76,20 +70,16 @@ bool AllowStatusRequest(std::vector<StatusRecord> &records,
 
 // Status Service
 //==============================================================================
-static asio::awaitable<void> StatusAlarm(void){
-    auto executor = co_await asio::this_coro::executor;
+static asio::awaitable<void> StatusHandler(tcp::socket socket, tcp::endpoint endpoint){
+    asio::steady_timer timer(co_await asio::this_coro::executor);
+    timer.expires_after(chrono::seconds(5));
+    timer.async_wait(
+        [&](boost::system::error_code ec){
+            if(!ec){
+                socket.close();
+            }
+        });
 
-    boost::system::error_code ec;
-    asio::steady_timer timer(executor);
-    timer.expires_at(steady_clock::now() + chrono::seconds(5));
-    co_await timer.async_wait(asio::redirect_error(use_awaitable, ec));
-    if(ec && ec != asio::error::operation_aborted){
-        std::cout << "StatusAlarm: " << ec.message() << std::endl;
-    }
-}
-
-static asio::awaitable<void> StatusProcess(tcp::socket &socket, const tcp::endpoint &endpoint){
-    (void)endpoint;
     uint8_t buffer[1024];
     try{
         co_await asio::async_read(socket, asio::buffer(buffer, 2), use_awaitable);
@@ -119,10 +109,6 @@ static asio::awaitable<void> StatusProcess(tcp::socket &socket, const tcp::endpo
     }catch(const boost::system::system_error &e){
         std::cout << "StatusProcess: " << e.what() << std::endl;
     }
-}
-
-static asio::awaitable<void> StatusHandler(tcp::socket socket, tcp::endpoint endpoint){
-    co_await (StatusAlarm() || StatusProcess(socket, endpoint));
 }
 
 asio::awaitable<void> StatusService(tcp::endpoint endpoint,
