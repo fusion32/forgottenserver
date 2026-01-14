@@ -109,7 +109,6 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/item.h
 	${CMAKE_CURRENT_LIST_DIR}/itemloader.h
 	${CMAKE_CURRENT_LIST_DIR}/items.h
-	${CMAKE_CURRENT_LIST_DIR}/lockfree.h
 	${CMAKE_CURRENT_LIST_DIR}/luascript.h
 	${CMAKE_CURRENT_LIST_DIR}/luavariant.h
 	${CMAKE_CURRENT_LIST_DIR}/mailbox.h

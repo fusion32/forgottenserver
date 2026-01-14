@@ -3,6 +3,7 @@
 
 #include "chat.h"
 #include "creature.h"
+#include "outputmessage.h"
 #include "tasks.h"
 
 class Container;
@@ -43,6 +44,11 @@ public:
     boost::asio::ip::tcp::socket   socket;
     boost::asio::ip::tcp::endpoint endpoint;
 
+    // NOTE(fusion): The mutex is only for synchronizing access to the output list.
+    std::mutex                     outputMutex;
+    OutputMessage_ptr              outputHead;
+
+    //
     std::unordered_set<uint32_t> knownCreatureSet;
     Player* player = nullptr;
 
@@ -55,9 +61,18 @@ public:
     bool debugAssertSent = false;
     bool acceptPackets = false;
 
+    //==========================================================================
+
     explicit GameConnection(boost::asio::ip::tcp::socket &&socket_,
                     const boost::asio::ip::tcp::endpoint &endpoint_)
-        : socket(std::move(socket_), endpoint(endpoint_) {}
+        : socket(std::move(socket_), endpoint(endpoint_),
+    {
+        // no-op
+    }
+
+    void writeToOutputQueue(const NetworkMessage &msg){
+        // TODO
+    }
 
     void login(uint32_t characterId, uint32_t accountId, OperatingSystem_t operatingSystem);
     void logout(bool displayEffect, bool forced);

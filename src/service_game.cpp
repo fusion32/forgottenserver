@@ -3768,24 +3768,120 @@ void GameConnection::parseExtendedOpcode(NetworkMessage& msg)
 //==============================================================================
 //==============================================================================
 //==============================================================================
-// TODO(fusion): So I was just beginning this implementation and honestly, these
-// joining operators feel too clunky. I'm not gonna try to explain them here, but
-// I've seen some other ways to having operation timeouts and I feel that using a
-// simple timer with a regular `async_wait` would end up more readable and more
-// sane.
-#include <boost/asio/experimental/awaitable_operators.hpp>
-using namespace boost::asio::experimental::awaitable_operators;
-
 namespace asio = boost::asio;
 namespace chrono = std::chrono;
 using asio::use_awaitable;
 using asio::ip::tcp;
 
-asio::awaitable<void> GameConnectionHandler(){
-	auto connection = std::make_shared<GameConnection>(std::move(socket), endpoint);
-	//auto a = co_await (GameTimer(5) || GameConnectionHandshake(connection));
+asio::awaitable<void> GameConnectionReader(GameConnection_ptr connection){
+	constexpr chrono::duration READ_TIMEOUT       = chrono::seconds(15);
+
+	auto executor = co_await asio::this_coro::executor;
+	asio::steady_timer timer(executor);
+	NetworkMessage msg;
+	try{
+		timer.expires_after(READ_TIMEOUT);
+		timer.async_wait(
+			[&](boost::system::error_code ec){
+				if(!ec){
+					connection->close();
+				}
+			});
+
+		co_await asio::async_read(connection->socket,
+				asio::buffer(msg.buffer, 2), use_awaitable);
+
+		int numXteaBlocks = ((uint16_t)msg.buffer[0]) | ((uint16_t)msg.buffer[1] << 8);
+		int packetLen = 4 + numXteaBlocks * 8;
+		if(numXteaBlocks == 0 || packetLen > (int)msg.buffer.size()){
+			connection->close();
+			co_return;
+		}
+
+		co_await asio::async_read(connection->socket,
+				asio::buffer(msg.buffer, packetLen), use_awaitable);
+		timer.cancel();
+
+		msg.rdpos = 0;
+		msg.wrpos = packetLen;
+		msg.get<uint32_t>(); // seq
+		XTEA_decrypt(msg);
+
+		int padding = msg.getByte();
+		if(padding >= packetLen){
+			connection->close();
+			co_return;
+		}
+
+		msg.discardPadding(padding);
+		connection->parsePacket(msg);
+	}catch(const std::exception &e){
+		std::cout << "GameConnectionReader: " << e.what() << std::endl;
+		connection->close();
+	}
 }
 
+asio::awaitable<void> GameConnectionWriter(GameConnection_ptr connection){
+	constexpr chrono::duration AUTO_SEND_INTERVAL = chrono::milliseconds(10);
+	constexpr chrono::duration WRITE_TIMEOUT      = chrono::seconds(15);
+
+	auto executor = co_await asio::this_coro::executor;
+	try {
+		asio::steady_timer timer(executor);
+		while(connection->socket.is_open()){
+			OutputMessage_ptr output;
+			{
+				std::lock_guard lockGuard(connection->outputMutex);
+				if(connection->outputHead){
+					output = std::move(connection->outputHead);
+					connection->outputHead = std::move(output->next);
+				}
+			}
+
+			if(!output){
+				boost::system::error_code ec;
+				timer.expires_after(AUTO_SEND_INTERVAL);
+				co_await timer.async_wait(asio::redirect_error(use_awaitable, ec));
+				continue;
+			}
+
+			// TODO(fusion): Add headers/encrypt here?
+
+			timer.expires_after(WRITE_TIMEOUT);
+			timer.async_wait(
+				[&](boost::system::error_code ec){
+					if(!ec){
+						connection->socket.close();
+					}
+				});
+
+			co_await asio::async_write(connection->socket,
+					asio::buffer(output->getOutputBuffer(), output->getOutputLength())
+					use_awaitable);
+
+			timer.cancel();
+		}
+	}catch(const std::exception &e){
+		//std::cout << "GameConnectionWriter: " << e.what() << std::endl;
+		connection->close();
+	}
+}
+
+asio::awaitable<void> GameConnectionHandshake(GameConnection_ptr connection){
+	auto executor = co_await asio::this_coro::executor;
+
+	// TODO(fusion): handshake goes here.
+
+	asio::co_spawn(executor
+			GameConnectionReader(connection),
+			asio::detached);
+
+	asio::co_spawn(executor
+			GameConnectionWriter(connection),
+			asio::detached);
+}
+
+// TODO(fusion): Pass RSA key as param? Probably just load some global?
 asio::awaitable<void> GameService(tcp::endpoint endpoint){
 	// TODO(fusion): Same as `StatusService`.
 	auto executor = co_await asio::this_coro::executor;
@@ -3802,10 +3898,22 @@ asio::awaitable<void> GameService(tcp::endpoint endpoint){
 
 		std::cout << ">> Game service listening on " << endpoint << std::endl;
 		while(true){
+			// NOTE(fusion): Each connection will have two coroutines + timers
+			// running after the handshake which means that on a multi-threaded
+			// setting, we could have unsynchronized access to the connection
+			// object. By using a strand, we can effectivelly crank up the number
+			// of threads, although I can only see it being beneficial if the
+			// I/O thread is reaching 100% usage, which is probably never the
+			// case (?).
+			//auto strand = asio::make_strand(executor);
+			//tcp::endpoint peer_endpoint;
+			//tcp::socket socket = co_await acceptor.async_accept(strand, peer_endpoint, use_awaitable);
+
 			tcp::endpoint peer_endpoint;
 			tcp::socket socket = co_await acceptor.async_accept(peer_endpoint, use_awaitable);
+			auto connection = std::make_unique<GameConnection>(std::move(socket), endpoint);
 			asio::co_spawn(executor,
-					GameConnectionHandler(std::move(socket), std::move(peer_endpoint)),
+					GameConnectionHandshake(std::move(connection)),
 					asio::detached);
 		}
 	}catch(const std::exception &e){

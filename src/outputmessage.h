@@ -8,12 +8,16 @@
 #include "tools.h"
 
 class OutputMessage;
-using OutputMessage_ptr = std::shared_ptr<OutputMessage>;
+struct OutputMessageDeleter {
+	void operator()(OutputMessage*) const;
+};
 
+using OutputMessage_ptr = std::unique_ptr<OutputMessage, OutputMessageDeleter>;
 class OutputMessage : public NetworkMessage
 {
 public:
-	int start;
+	OutputMessage_ptr next;
+	int               start;
 
 	OutputMessage() {
 		// NOTE(fusion): We need to leave some room for packet headers and the
@@ -58,14 +62,8 @@ public:
 			addBytes(msg.buffer.data(), msg.wrpos);
 		}
 	}
+
+	static OutputMessage_ptr make(void);
 };
-
-namespace tfs::net {
-
-OutputMessage_ptr make_output_message();
-void insert_protocol_to_autosend(const Protocol_ptr& protocol);
-void remove_protocol_from_autosend(const Protocol_ptr& protocol);
-
-} // namespace tfs::net
 
 #endif // FS_OUTPUTMESSAGE_H
