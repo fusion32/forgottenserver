@@ -9,7 +9,6 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/combat.cpp
 	${CMAKE_CURRENT_LIST_DIR}/condition.cpp
 	${CMAKE_CURRENT_LIST_DIR}/configmanager.cpp
-	${CMAKE_CURRENT_LIST_DIR}/connection.cpp
 	${CMAKE_CURRENT_LIST_DIR}/container.cpp
 	${CMAKE_CURRENT_LIST_DIR}/creature.cpp
 	${CMAKE_CURRENT_LIST_DIR}/creatureevent.cpp
@@ -50,15 +49,12 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/player.cpp
 	${CMAKE_CURRENT_LIST_DIR}/podium.cpp
 	${CMAKE_CURRENT_LIST_DIR}/position.cpp
-	${CMAKE_CURRENT_LIST_DIR}/protocol.cpp
-	${CMAKE_CURRENT_LIST_DIR}/protocolgame.cpp
-	${CMAKE_CURRENT_LIST_DIR}/protocolstatus.cpp
 	${CMAKE_CURRENT_LIST_DIR}/rsa.cpp
 	${CMAKE_CURRENT_LIST_DIR}/scheduler.cpp
 	${CMAKE_CURRENT_LIST_DIR}/script.cpp
 	${CMAKE_CURRENT_LIST_DIR}/scriptmanager.cpp
-	${CMAKE_CURRENT_LIST_DIR}/server.cpp
-	${CMAKE_CURRENT_LIST_DIR}/signals.cpp
+	${CMAKE_CURRENT_LIST_DIR}/service_game.cpp
+	${CMAKE_CURRENT_LIST_DIR}/service_status.cpp
 	${CMAKE_CURRENT_LIST_DIR}/spawn.cpp
 	${CMAKE_CURRENT_LIST_DIR}/spells.cpp
 	${CMAKE_CURRENT_LIST_DIR}/storeinbox.cpp
@@ -86,7 +82,6 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/combat.h
 	${CMAKE_CURRENT_LIST_DIR}/condition.h
 	${CMAKE_CURRENT_LIST_DIR}/configmanager.h
-	${CMAKE_CURRENT_LIST_DIR}/connection.h
 	${CMAKE_CURRENT_LIST_DIR}/const.h
 	${CMAKE_CURRENT_LIST_DIR}/container.h
 	${CMAKE_CURRENT_LIST_DIR}/creatureevent.h
@@ -126,23 +121,19 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/movement.h
 	${CMAKE_CURRENT_LIST_DIR}/networkmessage.h
 	${CMAKE_CURRENT_LIST_DIR}/npc.h
-	${CMAKE_CURRENT_LIST_DIR}/otserv.h
 	${CMAKE_CURRENT_LIST_DIR}/outfit.h
 	${CMAKE_CURRENT_LIST_DIR}/outputmessage.h
 	${CMAKE_CURRENT_LIST_DIR}/party.h
 	${CMAKE_CURRENT_LIST_DIR}/player.h
 	${CMAKE_CURRENT_LIST_DIR}/podium.h
 	${CMAKE_CURRENT_LIST_DIR}/position.h
-	${CMAKE_CURRENT_LIST_DIR}/protocolgame.h
-	${CMAKE_CURRENT_LIST_DIR}/protocol.h
-	${CMAKE_CURRENT_LIST_DIR}/protocolstatus.h
 	${CMAKE_CURRENT_LIST_DIR}/pugicast.h
 	${CMAKE_CURRENT_LIST_DIR}/rsa.h
 	${CMAKE_CURRENT_LIST_DIR}/scheduler.h
 	${CMAKE_CURRENT_LIST_DIR}/script.h
 	${CMAKE_CURRENT_LIST_DIR}/scriptmanager.h
-	${CMAKE_CURRENT_LIST_DIR}/server.h
-	${CMAKE_CURRENT_LIST_DIR}/signals.h
+	${CMAKE_CURRENT_LIST_DIR}/service_game.h
+	${CMAKE_CURRENT_LIST_DIR}/service_status.h
 	${CMAKE_CURRENT_LIST_DIR}/spawn.h
 	${CMAKE_CURRENT_LIST_DIR}/spectators.h
 	${CMAKE_CURRENT_LIST_DIR}/spells.h
@@ -162,10 +153,7 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/xtea.h
 	)
 
-set(tfs_MAIN ${CMAKE_CURRENT_LIST_DIR}/main.cpp PARENT_SCOPE)
-
-add_library(tfslib ${tfs_SRC})
-target_link_libraries(tfslib PRIVATE
+set(tfs_LIBS
 	Boost::iostreams
 	Boost::locale
 	fmt::fmt
@@ -174,21 +162,18 @@ target_link_libraries(tfslib PRIVATE
 	ZLIB::ZLIB
 	${CMAKE_THREAD_LIBS_INIT}
 	${LUA_LIBRARIES}
-	${MYSQL_CLIENT_LIBS}
-	)
-set_target_properties(tfslib PROPERTIES UNITY_BUILD ${ENABLE_UNITY_BUILD})
-
-if (APPLE)
-	target_link_libraries(tfslib PRIVATE Iconv::Iconv)
-endif()
+	${MYSQL_CLIENT_LIBS})
 
 if (HTTP)
-	add_subdirectory(http)
-	target_link_libraries(tfslib PRIVATE http)
+	list(APPEND tfs_SRC ${CMAKE_CURRENT_LIST_DIR}/service_http.cpp)
+	list(APPEND tfs_HDR ${CMAKE_CURRENT_LIST_DIR}/service_http.h)
+	list(APPEND tfs_LIBS Boost::json)
 endif ()
 
-add_custom_target(format COMMAND /usr/bin/clang-format -style=file -i ${tfs_HDR} ${tfs_SRC} ${tfs_MAIN})
-
-if (BUILD_TESTING)
-    add_subdirectory(tests)
+if (APPLE)
+	list(APPEND tfs_LIBS Iconv::Iconv)
 endif()
+
+set(tfs_SRC ${tfs_SRC} PARENT_SCOPE)
+set(tfs_LIBS ${tfs_LIBS} PARENT_SCOPE)
+

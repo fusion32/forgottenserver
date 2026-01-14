@@ -15,7 +15,6 @@
 #include "events.h"
 #include "globalevent.h"
 #include "housetile.h"
-#include "http/http.h"
 #include "inbox.h"
 #include "iologindata.h"
 #include "iomarket.h"
@@ -28,7 +27,6 @@
 #include "podium.h"
 #include "scheduler.h"
 #include "script.h"
-#include "server.h"
 #include "spectators.h"
 #include "spells.h"
 #include "storeinbox.h"
@@ -87,6 +85,11 @@ void Game::setGameState(GameState_t newState)
 
 	gameState = newState;
 	switch (newState) {
+		case GAME_STATE_STARTUP:{
+			startTime = OTSYS_TIME();
+			break;
+		}
+
 		case GAME_STATE_INIT: {
 			groups.load();
 			g_chat->load();
@@ -114,14 +117,11 @@ void Game::setGameState(GameState_t newState)
 
 			saveGameState();
 
-			g_dispatcher.addTask([this]() { shutdown(); });
+			// NOTE(fusion): We dispatch the task to stop the server so any tasks that
+			// were generated just above get a chance to run, before the process exits.
+			extern void ServerStop(void);
+			g_dispatcher.addTask(ServerStop);
 
-			g_scheduler.stop();
-			g_databaseTasks.stop();
-			g_dispatcher.stop();
-#ifdef HTTP
-			tfs::http::stop();
-#endif
 			break;
 		}
 
@@ -4820,26 +4820,6 @@ void Game::checkDecay()
 
 	lastBucket = bucket;
 	cleanup();
-}
-
-void Game::shutdown()
-{
-	std::cout << "Shutting down..." << std::flush;
-
-	g_scheduler.shutdown();
-	g_databaseTasks.shutdown();
-	g_dispatcher.shutdown();
-	map.spawns.clear();
-
-	cleanup();
-
-	if (serviceManager) {
-		serviceManager->stop();
-	}
-
-	ConnectionManager::getInstance().closeAll();
-
-	std::cout << " done!" << std::endl;
 }
 
 void Game::cleanup()

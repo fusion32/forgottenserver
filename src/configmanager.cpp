@@ -16,21 +16,26 @@
 #include <lua.hpp>
 #endif
 
-#if LUA_VERSION_NUM >= 502
-#undef lua_strlen
-#define lua_strlen lua_rawlen
-#endif
-
 extern Game g_game;
 
 namespace {
 
+struct ExpStage {
+	uint32_t minLevel;
+	uint32_t maxLevel;
+	float multiplier;
+
+	bool operator<(const ExpStage &other) const {
+		return (minLevel < other.minLevel)
+			|| (minLevel == other.minLevel && maxLevel < other.maxLevel);
+	}
+};
+
+std::vector<ExpStage> expStages;
+
 std::array<std::string, ConfigManager::LAST_STRING_CONFIG> string = {};
 std::array<int32_t, ConfigManager::LAST_INTEGER_CONFIG> integer = {};
 std::array<bool, ConfigManager::LAST_BOOLEAN_CONFIG> boolean = {};
-
-using ExperienceStages = std::vector<std::tuple<uint32_t, uint32_t, float>>;
-ExperienceStages expStages;
 
 bool loaded = false;
 
@@ -56,76 +61,69 @@ uint16_t getEnv(const char* envVar, uint16_t defaultValue)
 
 std::string getGlobalString(lua_State* L, const char* identifier, const char* defaultValue)
 {
+	std::string result;
 	lua_getglobal(L, identifier);
-	if (!lua_isstring(L, -1)) {
-		lua_pop(L, 1);
-		return defaultValue;
+	if(lua_isstring(L, -1)){
+		result = lua_tostring(L, -1);
+	}else{
+		result = defaultValue;
 	}
-
-	size_t len = lua_strlen(L, -1);
-	std::string ret(lua_tostring(L, -1), len);
 	lua_pop(L, 1);
-	return ret;
+	return result;
 }
 
 int32_t getGlobalNumber(lua_State* L, const char* identifier, const int32_t defaultValue = 0)
 {
+	int result;
 	lua_getglobal(L, identifier);
-	if (!lua_isnumber(L, -1)) {
-		lua_pop(L, 1);
-		return defaultValue;
+	if(lua_isnumber(L, -1)){
+		result = (int32_t)lua_tonumber(L, -1);
+	}else{
+		result = defaultValue;
 	}
-
-	int32_t val = lua_tonumber(L, -1);
 	lua_pop(L, 1);
-	return val;
+	return result;
 }
 
 bool getGlobalBoolean(lua_State* L, const char* identifier, const bool defaultValue)
 {
+	bool result;
 	lua_getglobal(L, identifier);
-	if (!lua_isboolean(L, -1)) {
-		if (!lua_isstring(L, -1)) {
-			lua_pop(L, 1);
-			return defaultValue;
-		}
-
-		size_t len = lua_strlen(L, -1);
-		std::string ret(lua_tostring(L, -1), len);
-		lua_pop(L, 1);
-		return booleanString(ret);
+	if(lua_isboolean(L, -1)){
+		result = lua_toboolean(L, -1) != 0;
+	}else if(lua_isstring(L, -1)){
+		result = booleanString(lua_tostring(L, -1));
+	}else{
+		result = defaultValue;
 	}
-
-	int val = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	return val != 0;
+	return result;
 }
 
-ExperienceStages loadLuaStages(lua_State* L)
+std::vector<ExpStage> loadLuaStages(lua_State* L)
 {
-	ExperienceStages stages;
+	std::vector<ExpStage> stages;
 
 	lua_getglobal(L, "experienceStages");
-	if (!lua_istable(L, -1)) {
-		return {};
+	if (lua_istable(L, -1)) {
+		lua_pushnil(L);
+		while (lua_next(L, -2) != 0) {
+			const auto tableIndex = lua_gettop(L);
+			uint32_t minLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "minlevel", 1);
+			uint32_t maxLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "maxlevel", INT_MAX);
+			float multiplier = tfs::lua::getField<float>(L, tableIndex, "multiplier", 1);
+			stages.push_back({minLevel, maxLevel, multiplier});
+			lua_pop(L, 4);
+		}
+		lua_pop(L, 1);
+
+		std::sort(stages.begin(), stages.end());
 	}
 
-	lua_pushnil(L);
-	while (lua_next(L, -2) != 0) {
-		const auto tableIndex = lua_gettop(L);
-		auto minLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "minlevel", 1);
-		auto maxLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "maxlevel", std::numeric_limits<uint32_t>::max());
-		auto multiplier = tfs::lua::getField<float>(L, tableIndex, "multiplier", 1);
-		stages.emplace_back(minLevel, maxLevel, multiplier);
-		lua_pop(L, 4);
-	}
-	lua_pop(L, 1);
-
-	std::sort(stages.begin(), stages.end());
 	return stages;
 }
 
-ExperienceStages loadXMLStages()
+std::vector<ExpStage> loadXMLStages()
 {
 	pugi::xml_document doc;
 	pugi::xml_parse_result result = doc.load_file("data/XML/stages.xml");
@@ -134,25 +132,27 @@ ExperienceStages loadXMLStages()
 		return {};
 	}
 
-	ExperienceStages stages;
+	std::vector<ExpStage> stages;
 	for (auto stageNode : doc.child("stages").children()) {
 		if (caseInsensitiveEqual(stageNode.name(), "config")) {
 			if (!stageNode.attribute("enabled").as_bool()) {
 				return {};
 			}
 		} else {
-			uint32_t minLevel = 1, maxLevel = std::numeric_limits<uint32_t>::max(), multiplier = 1;
+			int minLevel = 1;
+			int maxLevel = INT_MAX;
+			float multiplier = 1.0f;
 
 			if (auto minLevelAttribute = stageNode.attribute("minlevel")) {
-				minLevel = pugi::cast<uint32_t>(minLevelAttribute.value());
+				minLevel = pugi::cast<int>(minLevelAttribute.value());
 			}
 
 			if (auto maxLevelAttribute = stageNode.attribute("maxlevel")) {
-				maxLevel = pugi::cast<uint32_t>(maxLevelAttribute.value());
+				maxLevel = pugi::cast<int>(maxLevelAttribute.value());
 			}
 
 			if (auto multiplierAttribute = stageNode.attribute("multiplier")) {
-				multiplier = pugi::cast<uint32_t>(multiplierAttribute.value());
+				multiplier = pugi::cast<float>(multiplierAttribute.value());
 			}
 
 			stages.emplace_back(minLevel, maxLevel, multiplier);
@@ -184,6 +184,9 @@ bool ConfigManager::load()
 		return false;
 	}
 
+	// TODO(fusion): Any config value read from outside the game/dispatcher thread
+	// after initialization, must be made NON-RELOADABLE to avoid race conditions.
+
 	// parse config
 	if (!loaded) { // info that must be loaded one time (unless we reset the modules involved)
 		boolean[BIND_ONLY_GLOBAL_ADDRESS] = getGlobalBoolean(L, "bindOnlyGlobalAddress", false);
@@ -193,9 +196,17 @@ bool ConfigManager::load()
 			string[IP] = getGlobalString(L, "ip", "127.0.0.1");
 		}
 
+		string[DEFAULT_PRIORITY] = getGlobalString(L, "defaultPriority", "high");
+		string[SERVER_NAME] = getGlobalString(L, "serverName", "");
+		string[OWNER_NAME] = getGlobalString(L, "ownerName", "");
+		string[OWNER_EMAIL] = getGlobalString(L, "ownerEmail", "");
+		string[URL] = getGlobalString(L, "url", "");
+		string[LOCATION] = getGlobalString(L, "location", "");
+		string[WORLD_TYPE] = getGlobalString(L, "worldType", "pvp");
 		string[MAP_NAME] = getGlobalString(L, "mapName", "forgotten");
 		string[MAP_AUTHOR] = getGlobalString(L, "mapAuthor", "Unknown");
 		string[HOUSE_RENT_PERIOD] = getGlobalString(L, "houseRentPeriod", "never");
+
 		string[MYSQL_HOST] = getEnv("MYSQL_HOST", getGlobalString(L, "mysqlHost", "127.0.0.1"));
 		string[MYSQL_USER] = getEnv("MYSQL_USER", getGlobalString(L, "mysqlUser", "forgottenserver"));
 		string[MYSQL_PASS] = getEnv("MYSQL_PASSWORD", getGlobalString(L, "mysqlPass", ""));
@@ -209,8 +220,9 @@ bool ConfigManager::load()
 		}
 
 		integer[STATUS_PORT] = getGlobalNumber(L, "statusProtocolPort", 7171);
+		integer[STATUS_MIN_REQUEST_INTERVAL] = getGlobalNumber(L, "statusTimeout", 5000);
+
 		integer[HTTP_PORT] = getGlobalNumber(L, "httpPort", 8080);
-		integer[HTTP_WORKERS] = getGlobalNumber(L, "httpWorkers", 1);
 
 		integer[MARKET_OFFER_DURATION] = getGlobalNumber(L, "marketOfferDuration", 30 * 24 * 60 * 60);
 	}
@@ -253,14 +265,6 @@ bool ConfigManager::load()
 	boolean[CHECK_DUPLICATE_STORAGE_KEYS] = getGlobalBoolean(L, "checkDuplicateStorageKeys", false);
 	boolean[MONSTER_OVERSPAWN] = getGlobalBoolean(L, "monsterOverspawn", false);
 
-	string[DEFAULT_PRIORITY] = getGlobalString(L, "defaultPriority", "high");
-	string[SERVER_NAME] = getGlobalString(L, "serverName", "");
-	string[OWNER_NAME] = getGlobalString(L, "ownerName", "");
-	string[OWNER_EMAIL] = getGlobalString(L, "ownerEmail", "");
-	string[URL] = getGlobalString(L, "url", "");
-	string[LOCATION] = getGlobalString(L, "location", "");
-	string[WORLD_TYPE] = getGlobalString(L, "worldType", "pvp");
-
 	integer[MAX_PLAYERS] = getGlobalNumber(L, "maxPlayers");
 	integer[PZ_LOCKED] = getGlobalNumber(L, "pzLocked", 60000);
 	integer[DEFAULT_DESPAWNRANGE] = Monster::despawnRange = getGlobalNumber(L, "deSpawnRange", 2);
@@ -280,8 +284,7 @@ bool ConfigManager::load()
 	integer[KICK_AFTER_MINUTES] = getGlobalNumber(L, "kickIdlePlayerAfterMinutes", 15);
 	integer[PROTECTION_LEVEL] = getGlobalNumber(L, "protectionLevel", 1);
 	integer[DEATH_LOSE_PERCENT] = getGlobalNumber(L, "deathLosePercent", -1);
-	integer[STATUSQUERY_TIMEOUT] = getGlobalNumber(L, "statusTimeout", 5000);
-	integer[STATUS_COUNT_MAX_PLAYERS_PER_IP] = getGlobalNumber(L, "statusCountMaxPlayersPerIp", 0);
+	integer[STATUS_MAX_PLAYERS_PER_IP] = getGlobalNumber(L, "statusCountMaxPlayersPerIp", 0);
 	integer[FRAG_TIME] = getGlobalNumber(L, "timeToDecreaseFrags", 24 * 60 * 60);
 	integer[WHITE_SKULL_TIME] = getGlobalNumber(L, "whiteSkullTime", 15 * 60);
 	integer[STAIRHOP_DELAY] = getGlobalNumber(L, "stairJumpExhaustion", 2000);
@@ -349,16 +352,16 @@ bool ConfigManager::getBoolean(boolean_config_t what)
 
 float ConfigManager::getExperienceStage(uint32_t level)
 {
-	auto it = std::find_if(expStages.begin(), expStages.end(), [level](auto&& stage) {
-		auto&& [minLevel, maxLevel, _] = stage;
-		return level >= minLevel && level <= maxLevel;
-	});
+	auto it = std::find_if(expStages.begin(), expStages.end(),
+		[level](const ExpStage &stage) {
+			return level >= stage.minLevel && level <= stage.maxLevel;
+		});
 
 	if (it == expStages.end()) {
 		return getNumber(ConfigManager::RATE_EXPERIENCE);
 	}
 
-	return std::get<2>(*it);
+	return it->multiplier;
 }
 
 bool ConfigManager::setString(string_config_t what, std::string_view value)

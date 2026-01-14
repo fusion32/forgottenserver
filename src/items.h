@@ -434,7 +434,7 @@ public:
 	bool reload();
 	void clear();
 
-	bool loadFromOtb(const std::string& file);
+	bool loadFromOtb();
 
 	const ItemType& operator[](size_t id) const { return getItemType(id); }
 	const ItemType& getItemType(size_t id) const;

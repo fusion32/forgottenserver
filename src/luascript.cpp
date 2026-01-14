@@ -28,7 +28,6 @@
 #include "party.h"
 #include "player.h"
 #include "podium.h"
-#include "protocolstatus.h"
 #include "scheduler.h"
 #include "script.h"
 #include "spectators.h"
@@ -2309,7 +2308,7 @@ void LuaScriptInterface::registerFunctions()
 	registerEnumIn(L, "configKeys", ConfigManager::KICK_AFTER_MINUTES);
 	registerEnumIn(L, "configKeys", ConfigManager::PROTECTION_LEVEL);
 	registerEnumIn(L, "configKeys", ConfigManager::DEATH_LOSE_PERCENT);
-	registerEnumIn(L, "configKeys", ConfigManager::STATUSQUERY_TIMEOUT);
+	registerEnumIn(L, "configKeys", ConfigManager::STATUS_MIN_REQUEST_INTERVAL);
 	registerEnumIn(L, "configKeys", ConfigManager::FRAG_TIME);
 	registerEnumIn(L, "configKeys", ConfigManager::WHITE_SKULL_TIME);
 	registerEnumIn(L, "configKeys", ConfigManager::GAME_PORT);
@@ -3655,7 +3654,7 @@ int LuaScriptInterface::luaDebugPrint(lua_State* L)
 int LuaScriptInterface::luaGetWorldUpTime(lua_State* L)
 {
 	// getWorldUpTime()
-	uint64_t uptime = (OTSYS_TIME() - ProtocolStatus::start) / 1000;
+	int uptime = g_game.getUptimeSeconds();
 	lua_pushnumber(L, uptime);
 	return 1;
 }

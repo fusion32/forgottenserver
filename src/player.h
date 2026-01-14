@@ -11,7 +11,7 @@
 #include "groups.h"
 #include "guild.h"
 #include "inbox.h"
-#include "protocolgame.h"
+#include "service_game.h"
 #include "town.h"
 #include "vocation.h"
 
@@ -92,7 +92,7 @@ static constexpr int32_t NOTIFY_DEPOT_BOX_RANGE = 1;
 class Player final : public Creature
 {
 public:
-	explicit Player(ProtocolGame_ptr p);
+	explicit Player(GameConnection_ptr p);
 	~Player();
 
 	using Creature::onWalk;
@@ -246,7 +246,7 @@ public:
 			client->disconnect();
 		}
 	}
-	Connection::Address getIP() const;
+	boost::asio::ip::address getIP() const;
 
 	void addContainer(int cid, Container* container);
 	void closeContainer(int cid);
@@ -1249,8 +1249,8 @@ private:
 	int64_t lastPong;
 	int64_t nextAction = 0;
 
-	ProtocolGame_ptr client;
-	Connection::Address lastIP = {};
+	GameConnection_ptr client;
+	boost::asio::ip::address lastIP = {};
 	BedItem* bedItem = nullptr;
 	Guild_ptr guild = nullptr;
 	GuildRank_ptr guildRank = nullptr;
@@ -1370,7 +1370,7 @@ private:
 	friend class Map;
 	friend class Actions;
 	friend class IOLoginData;
-	friend class ProtocolGame;
+	friend class GameConnection;
 };
 
 #endif // FS_PLAYER_H

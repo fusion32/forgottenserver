@@ -399,7 +399,6 @@ public:
 	std::vector<Item*> getMarketItemList(uint16_t wareId, uint16_t sufficientCount, Player& player);
 
 	void cleanup();
-	void shutdown();
 	void ReleaseCreature(Creature* creature);
 	void ReleaseItem(Item* item);
 
@@ -495,6 +494,8 @@ public:
 	void removeTileToClean(Tile* tile) { tilesToClean.erase(tile); }
 	void clearTilesToClean() { tilesToClean.clear(); }
 
+	int getUptimeSeconds() { return (OTSYS_TIME() - startTime) / 1000; }
+
 private:
 	bool playerSaySpell(Player* player, SpeakClasses type, const std::string& text);
 	void playerWhisper(Player* player, const std::string& text);
@@ -535,6 +536,7 @@ private:
 
 	GameState_t gameState = GAME_STATE_NORMAL;
 	WorldType_t worldType = WORLD_TYPE_PVP;
+	int64_t startTime = 0;
 
 	ServiceManager* serviceManager = nullptr;
 

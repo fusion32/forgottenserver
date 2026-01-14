@@ -9,12 +9,12 @@
 #include "pugicast.h"
 #include "tools.h"
 
-bool Vocations::loadFromXml(std::istream& is, std::string_view filename)
+bool Vocations::loadFromXml()
 {
 	pugi::xml_document doc;
-	pugi::xml_parse_result result = doc.load(is);
+	pugi::xml_parse_result result = doc.load_file("data/XML/vocations.xml");
 	if (!result) {
-		printXMLError("Error - Vocations::loadFromXml", filename, result);
+		printXMLError("Error - Vocations::loadFromXml", "data/XML/vocations.xml", result);
 		return false;
 	}
 

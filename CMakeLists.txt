@@ -21,11 +21,6 @@ if (HTTP)
     add_compile_definitions(HTTP)
 endif()
 
-option(BUILD_TESTING "Build unit tests" OFF)
-if (BUILD_TESTING)
-    list(APPEND VCPKG_MANIFEST_FEATURES "unit-tests")
-endif()
-
 option(USE_LIBMYSQL "Use libmysql instead of libmariadb (vcpkg only)" OFF)
 if (USE_LIBMYSQL)
     list(APPEND VCPKG_MANIFEST_FEATURES "libmysql")
@@ -106,9 +101,7 @@ set(BOOST_REQUIRED_COMPONENTS iostreams locale)
 if (HTTP)
     list(APPEND BOOST_REQUIRED_COMPONENTS json)
 endif ()
-if (BUILD_TESTING)
-    list(APPEND BOOST_REQUIRED_COMPONENTS unit_test_framework)
-endif ()
+
 find_package(Boost ${BOOST_REQUIRED_VERSION} REQUIRED COMPONENTS ${BOOST_REQUIRED_COMPONENTS})
 
 include_directories(${Boost_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${LUA_INCLUDE_DIR} ${MYSQL_INCLUDE_DIR} ${PUGIXML_INCLUDE_DIR})
@@ -116,17 +109,8 @@ include_directories(${Boost_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${LUA_INCLUDE_D
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (BUILD_TESTING)
-    message(STATUS "Building unit tests")
-    enable_testing()
-endif()
-
 # Option to disable unity builds
 option(ENABLE_UNITY_BUILD "Enable unity build" ON)
-
-add_subdirectory(src)
-add_executable(tfs ${tfs_MAIN})
-target_link_libraries(tfs tfslib)
 
 ### INTERPROCEDURAL_OPTIMIZATION (AKA LTO) ###
 include(CheckIPOSupported)
@@ -136,6 +120,12 @@ if (result)
 else ()
     message(STATUS "IPO is not supported: ${error}")
 endif ()
+
+### Executable
+add_subdirectory(src)
+add_executable(tfs ${tfs_SRC})
+target_link_libraries(tfs PRIVATE ${tfs_LIBS})
+set_target_properties(tfs PROPERTIES UNITY_BUILD ${ENABLE_UNITY_BUILD})
 
 ### Git Version ###
 option(SKIP_GIT "Skip checking for git updates" OFF)

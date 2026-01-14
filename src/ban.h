@@ -4,8 +4,6 @@
 #ifndef FS_BAN_H
 #define FS_BAN_H
 
-#include "connection.h"
-
 namespace IOBan {
 
 struct BanInfo
@@ -16,7 +14,7 @@ struct BanInfo
 };
 
 const std::optional<BanInfo> getAccountBanInfo(uint32_t accountId);
-const std::optional<BanInfo> getIpBanInfo(const Connection::Address& clientIP);
+const std::optional<BanInfo> getIpBanInfo(const boost::asio::ip::address& clientIP);
 bool isPlayerNamelocked(uint32_t playerId);
 
 }; // namespace IOBan

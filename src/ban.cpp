@@ -5,7 +5,6 @@
 
 #include "ban.h"
 
-#include "connection.h"
 #include "database.h"
 #include "databasetasks.h"
 
@@ -45,7 +44,7 @@ const std::optional<BanInfo> getAccountBanInfo(uint32_t accountId)
 	return banInfo;
 }
 
-const std::optional<BanInfo> getIpBanInfo(const Connection::Address& clientIP)
+const std::optional<BanInfo> getIpBanInfo(const boost::asio::ip::address& clientIP)
 {
 	if (clientIP.is_unspecified()) {
 		return std::nullopt;

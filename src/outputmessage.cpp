@@ -6,7 +6,6 @@
 #include "outputmessage.h"
 
 #include "lockfree.h"
-#include "protocol.h"
 #include "scheduler.h"
 
 extern Scheduler g_scheduler;

@@ -4,9 +4,11 @@
 #ifndef FS_OUTPUTMESSAGE_H
 #define FS_OUTPUTMESSAGE_H
 
-#include "connection.h"
 #include "networkmessage.h"
 #include "tools.h"
+
+class OutputMessage;
+using OutputMessage_ptr = std::shared_ptr<OutputMessage>;
 
 class OutputMessage : public NetworkMessage
 {

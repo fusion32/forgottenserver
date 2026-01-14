@@ -316,7 +316,7 @@ void Items::clear()
 bool Items::reload()
 {
 	clear();
-	loadFromOtb("data/items/items.otb");
+	loadFromOtb();
 
 	if (!loadFromXml()) {
 		return false;
@@ -330,9 +330,9 @@ bool Items::reload()
 
 constexpr auto OTBI = OTB::Identifier{{'O', 'T', 'B', 'I'}};
 
-bool Items::loadFromOtb(const std::string& file)
+bool Items::loadFromOtb()
 {
-	OTB::Loader loader{file, OTBI};
+	OTB::Loader loader{"data/items/items.otb", OTBI};
 
 	auto& root = loader.parseTree();
 

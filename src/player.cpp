@@ -38,7 +38,7 @@ MuteCountMap Player::muteCountMap;
 uint32_t Player::playerAutoID = 0x10000000;
 uint32_t Player::playerIDLimit = 0x20000000;
 
-Player::Player(ProtocolGame_ptr p) :
+Player::Player(GameConnection_ptr p) :
     Creature(),
     lastPing(OTSYS_TIME()),
     lastPong(lastPing),
@@ -2074,7 +2074,7 @@ BlockType_t Player::blockHit(Creature* attacker, CombatType_t combatType, int32_
 	return blockType;
 }
 
-Connection::Address Player::getIP() const
+boost::asio::ip::address Player::getIP() const
 {
 	if (client) {
 		return client->getIP();

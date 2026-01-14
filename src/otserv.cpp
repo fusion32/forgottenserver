@@ -3,28 +3,41 @@
 
 #include "otpch.h"
 
-#include "otserv.h"
-
 #include "configmanager.h"
 #include "databasemanager.h"
 #include "databasetasks.h"
 #include "game.h"
-#include "http/http.h"
 #include "iomarket.h"
 #include "monsters.h"
 #include "outfit.h"
-#include "protocolstatus.h"
 #include "rsa.h"
 #include "scheduler.h"
 #include "script.h"
 #include "scriptmanager.h"
-#include "server.h"
 
-#include <fstream>
+#include "service_game.h"
+#include "service_status.h"
+#ifdef HTTP
+#	include "service_http.h"
+#endif
 
 #if __has_include("gitmetadata.h")
 #include "gitmetadata.h"
 #endif
+
+#if defined(__amd64__) || defined(_M_X64)
+#	define BUILD_ARCH "x64"
+#elif defined(__i386__) || defined(_M_IX86) || defined(_X86_)
+#	define BUILD_ARCH "x86"
+#elif defined(__arm__)
+#	define BUILD_ARCH "ARM";
+#else
+#	define BUILD_ARCH "unknown"
+#endif
+
+namespace asio = boost::asio;
+namespace chrono = std::chrono;
+static boost::asio::io_context g_ioContext(1);
 
 DatabaseTasks g_databaseTasks;
 Dispatcher g_dispatcher;
@@ -35,142 +48,182 @@ Monsters g_monsters;
 Vocations g_vocations;
 extern Scripts* g_scripts;
 
-std::mutex g_loaderLock;
-std::condition_variable g_loaderSignal;
-std::unique_lock<std::mutex> g_loaderUniqueLock(g_loaderLock);
-
-namespace {
-
-void startupErrorMessage(const std::string& errorStr)
-{
-	fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold, "> ERROR: {:s}\n", errorStr);
-	g_loaderSignal.notify_all();
+template<typename ...Args>
+void PrintError(fmt::format_string<Args...> fmt, Args &&...args){
+	fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
+			fmt, std::forward<Args>(args)...);
 }
 
-void mainLoader(ServiceManager* services)
-{
-	// dispatcher thread
-	g_game.setGameState(GAME_STATE_STARTUP);
+void ServerStop(void){
+	g_ioContext.stop();
+}
 
-	srand(static_cast<unsigned int>(OTSYS_TIME()));
-#ifdef _WIN32
+int main(int argc, const char **argv){
+	(void)argc;
+	(void)argv;
+
+	std::set_new_handler([]{
+			puts("OUT OF MEMORY");
+			std::terminate();
+		});
+
+	// TODO(fusion): Support the other "utility" signals?
+	asio::signal_set signals(g_ioContext, SIGINT, SIGTERM);
+	signals.async_wait(
+		[&](boost::system::error_code, int){
+			g_dispatcher.addTask([]{ g_game.setGameState(GAME_STATE_SHUTDOWN); });
+		});
+
+#ifndef _WIN32
+	if (getuid() == 0 || geteuid() == 0) {
+		PrintError("Running the server as root is unsafe and may compromise the"
+				" whole system in case of unknown vunerabilities. Please setup"
+				" and use a regular user instead.\n");
+		return EXIT_FAILURE;
+	}
+
+#else
 	SetConsoleTitle(STATUS_SERVER_NAME);
 
-	// fixes a problem with escape characters not being processed in Windows consoles
-	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-	DWORD dwMode = 0;
-	GetConsoleMode(hOut, &dwMode);
-	dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-	SetConsoleMode(hOut, dwMode);
+	// NOTE(fusion): Enable virtual terminal processing.
+	{
+		HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+		if(hStdout && hStdout != INVALID_HANDLE_VALUE){
+			DWORD mode = 0;
+			if(GetConsoleMode(hStdout, &mode)){
+				mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				SetConsoleMode(hStdout, mode);
+			}
+		}
+
+		HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
+		if(hStderr && hStderr != INVALID_HANDLE_VALUE){
+			DWORD mode = 0;
+			if(GetConsoleMode(hStderr, &mode)){
+				mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				SetConsoleMode(hStderr, mode);
+			}
+		}
+	}
+
+	// NOTE(fusion): Change process priority.
+	{
+		std::string_view defaultPriority = getString(ConfigManager::DEFAULT_PRIORITY);
+		if (caseInsensitiveEqual(defaultPriority, "high")) {
+			SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+		} else if (caseInsensitiveEqual(defaultPriority, "above-normal")) {
+			SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+		}
+	}
 #endif
 
-	printServerVersion();
+	srand(static_cast<unsigned int>(OTSYS_TIME()));
 
-	// read global config
-	std::cout << ">> Loading config" << std::endl;
+#if GIT_RETRIEVED_STATE
+	fmt::print("{} - Version {}\n", STATUS_SERVER_NAME, GIT_DESCRIBE);
+	fmt::print("Git SHA1 {} dated {}\n", GIT_SHORT_SHA1, GIT_COMMIT_DATE_ISO8601);
+#if GIT_IS_DIRTY
+	fmt::print("*** DIRTY - NOT OFFICIAL RELEASE ***\n");
+#endif
+#else
+	fmt::print("{} - Version {}\n", STATUS_SERVER_NAME, STATUS_SERVER_VERSION);
+#endif
+
+	fmt::print("Compiled with {} ({}) on {} {}\n", BOOST_COMPILER, BUILD_ARCH, __DATE__, __TIME__);
+
+#if defined(LUAJIT_VERSION)
+	fmt::print("Linked with {}\n", LUAJIT_VERSION);
+#else
+	fmt::print("Linked with {}\n", LUA_RELEASE);
+#endif
+
+	fmt::print("\n");
+	fmt::print("A server developed by {}\n", STATUS_SERVER_DEVELOPERS);
+	fmt::print("Visit our forum for updates, support, and resources: https://otland.net/.\n");
+	fmt::print("\n");
+
+
+	g_game.setGameState(GAME_STATE_STARTUP);
+
+	fmt::print(">> Loading config\n");
 	if (!ConfigManager::load()) {
-		startupErrorMessage("Unable to load " + getString(ConfigManager::CONFIG_FILE) + "!");
-		return;
+		PrintError("Unable to load {}!\n", getString(ConfigManager::CONFIG_FILE));
+		return EXIT_FAILURE;
 	}
 
-#ifdef _WIN32
-	const std::string& defaultPriority = getString(ConfigManager::DEFAULT_PRIORITY);
-	if (caseInsensitiveEqual(defaultPriority, "high")) {
-		SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-	} else if (caseInsensitiveEqual(defaultPriority, "above-normal")) {
-		SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
-	}
-#endif
-
-	// set RSA key
-	std::cout << ">> Loading RSA key " << std::endl;
-	try {
-		std::ifstream key{"key.pem"};
-		std::string pem{std::istreambuf_iterator<char>{key}, std::istreambuf_iterator<char>{}};
-		tfs::rsa::loadPEM(pem);
-	} catch (const std::exception& e) {
-		startupErrorMessage(e.what());
-		return;
-	}
-
-	std::cout << ">> Establishing database connection..." << std::flush;
-
+	fmt::print(">> Establishing database connection...");
 	if (!Database::getInstance().connect()) {
-		startupErrorMessage("Failed to connect to database.");
-		return;
+		PrintError("Failed to connect to database.\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << " MySQL " << Database::getClientVersion() << std::endl;
-
-	// run database manager
-	std::cout << ">> Running database manager" << std::endl;
-
+	fmt::print(" MySQL {}\n", Database::getClientVersion());
+	fmt::print(">> Running database manager\n");
 	if (!DatabaseManager::isDatabaseSetup()) {
-		startupErrorMessage(
-		    "The database you have specified in config.lua is empty, please import the schema.sql to your database.");
-		return;
+		PrintError("The database you have specified in config.lua is empty,"
+				" please import the schema.sql to your database.\n");
+		return EXIT_FAILURE;
 	}
-	g_databaseTasks.start();
 
 	DatabaseManager::updateDatabase();
-
 	if (getBoolean(ConfigManager::OPTIMIZE_DATABASE) && !DatabaseManager::optimizeTables()) {
-		std::cout << "> No tables were optimized." << std::endl;
+		fmt::print("> No tables were optimized.\n");
 	}
 
-	// load vocations
-	std::cout << ">> Loading vocations" << std::endl;
-	if (std::ifstream is{"data/XML/vocations.xml"}; !g_vocations.loadFromXml(is, "data/XML/vocations.xml")) {
-		startupErrorMessage("Unable to load vocations!");
-		return;
+	fmt::print(">> Loading vocations\n");
+	if (!g_vocations.loadFromXml()) {
+		PrintError("Unable to load vocations!\n");
+		return EXIT_FAILURE;
 	}
 
-	// load item data
-	std::cout << ">> Loading items... ";
-	if (!Item::items.loadFromOtb("data/items/items.otb")) {
-		startupErrorMessage("Unable to load items (OTB)!");
-		return;
+	fmt::print(">> Loading items...");
+	if (!Item::items.loadFromOtb()) {
+		fmt::print("\n");
+		PrintError("Unable to load items (OTB)!\n");
+		return EXIT_FAILURE;
 	}
-	std::cout << fmt::format("OTB v{:d}.{:d}.{:d}", Item::items.majorVersion, Item::items.minorVersion,
-	                         Item::items.buildNumber)
-	          << std::endl;
+
+	fmt::print(" OTB v{:d}.{:d}.{:d}\n",
+			Item::items.majorVersion,
+			Item::items.minorVersion,
+			Item::items.buildNumber);
 
 	if (!Item::items.loadFromXml()) {
-		startupErrorMessage("Unable to load items (XML)!");
-		return;
+		PrintError("Unable to load items (XML)!\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Loading script systems" << std::endl;
+	fmt::print(">> Loading script systems\n");
 	if (!ScriptingManager::getInstance().loadScriptSystems()) {
-		startupErrorMessage("Failed to load script systems");
-		return;
+		PrintError("Failed to load script systems\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Loading lua scripts" << std::endl;
+	fmt::print(">> Loading lua scripts\n");
 	if (!g_scripts->loadScripts("scripts", false, false)) {
-		startupErrorMessage("Failed to load lua scripts");
-		return;
+		PrintError("Failed to load lua scripts\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Loading monsters" << std::endl;
+	fmt::print(">> Loading monsters\n");
 	if (!g_monsters.loadFromXml()) {
-		startupErrorMessage("Unable to load monsters!");
-		return;
+		PrintError("Unable to load monsters!\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Loading lua monsters" << std::endl;
+	fmt::print(">> Loading lua monsters\n");
 	if (!g_scripts->loadScripts("monster", false, false)) {
-		startupErrorMessage("Failed to load lua monsters");
-		return;
+		PrintError("Failed to load lua monsters\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Loading outfits" << std::endl;
+	fmt::print(">> Loading outfits\n");
 	if (!Outfits::getInstance().loadFromXml()) {
-		startupErrorMessage("Unable to load outfits!");
-		return;
+		PrintError("Unable to load outfits!\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Checking world type... " << std::flush;
+	fmt::print(">> Checking world type...");
 	std::string worldType = boost::algorithm::to_lower_copy(getString(ConfigManager::WORLD_TYPE));
 	if (worldType == "pvp") {
 		g_game.setWorldType(WORLD_TYPE_PVP);
@@ -179,38 +232,24 @@ void mainLoader(ServiceManager* services)
 	} else if (worldType == "pvp-enforced") {
 		g_game.setWorldType(WORLD_TYPE_PVP_ENFORCED);
 	} else {
-		std::cout << std::endl;
-		startupErrorMessage(
-		    fmt::format("Unknown world type: {:s}, valid world types are: pvp, no-pvp and pvp-enforced.",
-		                getString(ConfigManager::WORLD_TYPE)));
-		return;
+		fmt::print("\n");
+		PrintError("Unknown world type {}, valid world types are: pvp, no-pvp and pvp-enforced.\n",
+				getString(ConfigManager::WORLD_TYPE));
+		return EXIT_FAILURE;
 	}
-	std::cout << boost::algorithm::to_upper_copy(worldType) << std::endl;
+	fmt::print(" {}\n", boost::algorithm::to_upper_copy(worldType));
 
-	std::cout << ">> Loading map" << std::endl;
+	fmt::print(">> Loading map\n");
 	if (!g_game.loadMainMap(getString(ConfigManager::MAP_NAME))) {
-		startupErrorMessage("Failed to load map");
-		return;
+		PrintError("Failed to load map\n");
+		return EXIT_FAILURE;
 	}
 
-	std::cout << ">> Initializing gamestate" << std::endl;
+	fmt::print(">> Initializing gamestate\n");
 	g_game.setGameState(GAME_STATE_INIT);
-
-	// Game client protocols
-	services->add<ProtocolGame>(static_cast<uint16_t>(getNumber(ConfigManager::GAME_PORT)));
-
-	// OT protocols
-	services->add<ProtocolStatus>(static_cast<uint16_t>(getNumber(ConfigManager::STATUS_PORT)));
-
-#ifdef HTTP
-	// HTTP server
-	tfs::http::start(getBoolean(ConfigManager::BIND_ONLY_GLOBAL_ADDRESS), getString(ConfigManager::IP),
-	                 getNumber(ConfigManager::HTTP_PORT), getNumber(ConfigManager::HTTP_WORKERS));
-#endif
 
 	RentPeriod_t rentPeriod;
 	std::string strRentPeriod = boost::algorithm::to_lower_copy(getString(ConfigManager::HOUSE_RENT_PERIOD));
-
 	if (strRentPeriod == "yearly") {
 		rentPeriod = RENTPERIOD_YEARLY;
 	} else if (strRentPeriod == "weekly") {
@@ -224,96 +263,69 @@ void mainLoader(ServiceManager* services)
 	}
 
 	g_game.map.houses.payHouses(rentPeriod);
-
 	tfs::iomarket::checkExpiredOffers();
 	tfs::iomarket::updateStatistics();
 
-	std::cout << ">> Loaded all modules, server starting up..." << std::endl;
+	fmt::print(">> Loaded all modules, server starting up...\n");
+	g_game.setGameState(GAME_STATE_NORMAL);
 
-#ifndef _WIN32
-	if (getuid() == 0 || geteuid() == 0) {
-		std::cout << "> Warning: " << STATUS_SERVER_NAME
-		          << " has been executed as root user, please consider running it as a normal user." << std::endl;
+	// TODO(fusion): Simplify threads?
+	g_dispatcher.start();
+	g_scheduler.start();
+	g_databaseTasks.start();
+
+	//===================================================================================
+	//===================================================================================
+	//===================================================================================
+	//===================================================================================
+
+
+	// SERVICE BIND ADDRESS
+	asio::ip::address bindAddress = getBoolean(ConfigManager::BIND_ONLY_GLOBAL_ADDRESS)
+			? asio::ip::make_address(getString(ConfigManager::IP))
+			: asio::ip::address_v6::any();
+
+	{ // GAME SERVICE
+		asio::ip::tcp::endpoint endpoint(bindAddress, getNumber(ConfigManager::GAME_PORT));
+		asio::co_spawn(g_ioContext,
+				GameService(endpoint),
+				std::rethrow_exception);
+	}
+
+	{ // STATUS SERVICE
+		auto minRequestInterval = chrono::milliseconds(getNumber(ConfigManager::STATUS_MIN_REQUEST_INTERVAL));
+		asio::ip::tcp::endpoint endpoint(bindAddress, getNumber(ConfigManager::STATUS_PORT));
+		asio::co_spawn(g_ioContext,
+				StatusService(endpoint, minRequestInterval),
+				std::rethrow_exception);
+	}
+
+#ifdef HTTP
+	{ // HTTP SERVICE
+		asio::ip::tcp::endpoint endpoint(bindAddress, getNumber(ConfigManager::HTTP_PORT));
+		asio::co_spawn(g_ioContext,
+				HttpService(endpoint),
+				std::rethrow_exception);
 	}
 #endif
 
-	g_game.start(services);
-	g_game.setGameState(GAME_STATE_NORMAL);
-	g_loaderSignal.notify_all();
-}
+	fmt::print(">> {} Online!\n", getString(ConfigManager::SERVER_NAME));
+	fflush(stdout);
 
-[[noreturn]] void badAllocationHandler()
-{
-	// Use functions that only use stack allocation
-	puts("Allocation failed, server out of memory.\nDecrease the size of your map or compile in 64 bits mode.\n");
-	getchar();
-	exit(-1);
-}
-
-} // namespace
-
-void startServer()
-{
-	// Setup bad allocation handler
-	std::set_new_handler(badAllocationHandler);
-
-	ServiceManager serviceManager;
-
-	g_dispatcher.start();
-	g_scheduler.start();
-
-	g_dispatcher.addTask([services = &serviceManager]() { mainLoader(services); });
-
-	g_loaderSignal.wait(g_loaderUniqueLock);
-
-	if (serviceManager.is_running()) {
-		std::cout << ">> " << getString(ConfigManager::SERVER_NAME) << " Server Online!" << std::endl << std::endl;
-		serviceManager.run();
-	} else {
-		std::cout << ">> No services running. The server is NOT online." << std::endl;
-		g_scheduler.shutdown();
-		g_databaseTasks.shutdown();
-		g_dispatcher.shutdown();
+	try{
+		g_ioContext.run();
+	}catch(const std::exception &e){
+		PrintError("Server error: {}\n", e.what());
 	}
+
+	fmt::print(">> Shutting down...\n");
+
+	g_scheduler.shutdown();
+	g_databaseTasks.shutdown();
+	g_dispatcher.shutdown();
 
 	g_scheduler.join();
 	g_databaseTasks.join();
 	g_dispatcher.join();
 }
 
-void printServerVersion()
-{
-#if defined(GIT_RETRIEVED_STATE) && GIT_RETRIEVED_STATE
-	std::cout << STATUS_SERVER_NAME << " - Version " << GIT_DESCRIBE << std::endl;
-	std::cout << "Git SHA1 " << GIT_SHORT_SHA1 << " dated " << GIT_COMMIT_DATE_ISO8601 << std::endl;
-#if GIT_IS_DIRTY
-	std::cout << "*** DIRTY - NOT OFFICIAL RELEASE ***" << std::endl;
-#endif
-#else
-	std::cout << STATUS_SERVER_NAME << " - Version " << STATUS_SERVER_VERSION << std::endl;
-#endif
-
-	std::cout << "Compiled with " << BOOST_COMPILER << std::endl;
-	std::cout << "Compiled on " << __DATE__ << ' ' << __TIME__ << " for platform ";
-#if defined(__amd64__) || defined(_M_X64)
-	std::cout << "x64";
-#elif defined(__i386__) || defined(_M_IX86) || defined(_X86_)
-	std::cout << "x86";
-#elif defined(__arm__)
-	std::cout << "ARM";
-#else
-	std::cout << "unknown";
-#endif
-	std::cout << std::endl;
-
-#if defined(LUAJIT_VERSION)
-	std::cout << "Linked with " << LUAJIT_VERSION << std::endl;
-#else
-	std::cout << "Linked with " << LUA_RELEASE << std::endl;
-#endif
-
-	std::cout << std::endl;
-	std::cout << "A server developed by " << STATUS_SERVER_DEVELOPERS << std::endl;
-	std::cout << "Visit our forum for updates, support, and resources: https://otland.net/." << std::endl;
-	std::cout << std::endl;
-}
