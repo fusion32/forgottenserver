@@ -42,11 +42,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 if (WIN32)
     add_compile_definitions(_WIN32_WINNT=0x0601)
 else ()
-    add_compile_options(-Wall -Wextra -Wnon-virtual-dtor -pedantic -Werror -pipe -fvisibility=hidden)
-endif ()
-
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    add_compile_options(-fno-strict-aliasing)
+    add_compile_options(-pipe -Wall -Wextra -Werror -pedantic -Wnon-virtual-dtor -Wno-deprecated-declarations -fno-strict-aliasing -fvisibility=hidden)
 endif ()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")

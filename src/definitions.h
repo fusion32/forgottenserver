@@ -8,15 +8,15 @@ static constexpr auto STATUS_SERVER_NAME = "The Forgotten Server";
 
 static constexpr auto STATUS_SERVER_VERSION = "1.7";
 static constexpr auto STATUS_SERVER_DEVELOPERS = "The Forgotten Server Team";
-static constexpr auto CLIENT_VERSION_MIN = 1310;
-static constexpr auto CLIENT_VERSION_MAX = 1311;
-static constexpr auto CLIENT_VERSION_STR = "13.10";
+static constexpr auto CLIENT_VERSION_MIN = 1520;
+static constexpr auto CLIENT_VERSION_MAX = 1521;
+static constexpr auto CLIENT_VERSION_STR = "15.20";
 
 static constexpr auto AUTHENTICATOR_DIGITS = 6U;
 static constexpr auto AUTHENTICATOR_PERIOD = 30U;
 
 #define BOOST_ASIO_NO_DEPRECATED
-#define OPENSSL_NO_DEPRECATED
+//#define OPENSSL_NO_DEPRECATED // probably use EVP API if this is important?
 
 #ifndef __FUNCTION__
 #define __FUNCTION__ __func__

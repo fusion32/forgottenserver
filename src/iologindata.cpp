@@ -37,6 +37,31 @@ uint32_t IOLoginData::getAccountIdByPlayerId(uint32_t playerId)
 	return result->getNumber<uint32_t>("account_id");
 }
 
+bool IOLoginData::loadSession(std::string_view sessionToken,
+						std::string_view characterName,
+						SessionData *outSessionData){
+	Database &db = Database::getInstance();
+	DBResult_ptr result = db.storeQuery(fmt::format(
+			"SELECT `a`.`id` AS `account_id`, INET6_NTOA(`s`.`ip`) AS `session_ip`, `p`.`id` AS `character_id`"
+			" FROM `accounts` `a`"
+				" INNER JOIN `sessions` `s` ON `a`.`id` = `s`.`account_id`"
+				" INNER JOIN `players` `p` ON `a`.`id` = `p`.`account_id`"
+			" WHERE `s`.`token` = {:s} AND `s`.`expired_at` IS NULL"
+				" AND `p`.`name` = {:s} AND `p`.`deletion` = 0",
+			db.escapeString(sessionToken), db.escapeString(characterName)));
+	if (!result) {
+		return false;
+	}
+
+	if(outSessionData){
+		outSessionData->accountId = result->getNumber<uint32_t>("account_id");
+		outSessionData->characterId = result->getNumber<uint32_t>("character_id");
+		outSessionData->address = boost::asio::ip::make_address(result->getString("session_ip"));
+	}
+
+	return true;
+}
+
 AccountType_t IOLoginData::getAccountType(uint32_t accountId)
 {
 	DBResult_ptr result =
@@ -88,7 +113,7 @@ bool IOLoginData::preloadPlayer(Player* player)
 	player->setGroup(group);
 	player->accountNumber = result->getNumber<uint32_t>("account_id");
 	player->accountType = static_cast<AccountType_t>(result->getNumber<uint16_t>("type"));
-	player->premiumEndsAt = result->getNumber<time_t>("premium_ends_at");
+	player->premiumEnd = result->getNumber<time_t>("premium_ends_at");
 	return true;
 }
 
@@ -150,7 +175,7 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 	}
 
 	player->accountType = static_cast<AccountType_t>(account->getNumber<int32_t>("type"));
-	player->premiumEndsAt = account->getNumber<time_t>("premium_ends_at");
+	player->premiumEnd = account->getNumber<time_t>("premium_ends_at");
 
 	player->setGUID(result->getNumber<uint32_t>("id"));
 	player->name = result->getString("name");

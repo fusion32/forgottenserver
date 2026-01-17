@@ -47,7 +47,7 @@ bool AllowStatusRequest(std::vector<StatusRecord> &records,
     auto now = steady_clock::now();
     auto cutoff = now - minRequestInterval;
     for(size_t readIdx = 0; readIdx < records.size(); readIdx += 1){
-        if(records[readIdx].timepoint >= cutoff){
+        if(records[readIdx].timepoint > cutoff){
             if(records[readIdx].address == address){
                 recentRequest = true;
             }
@@ -71,6 +71,8 @@ bool AllowStatusRequest(std::vector<StatusRecord> &records,
 // Status Service
 //==============================================================================
 static asio::awaitable<void> StatusHandler(tcp::socket socket, tcp::endpoint endpoint){
+    (void)endpoint;
+
     asio::steady_timer timer(co_await asio::this_coro::executor);
     timer.expires_after(chrono::seconds(5));
     timer.async_wait(

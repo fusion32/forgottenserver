@@ -1380,9 +1380,9 @@ void onInventoryUpdate(Player* player, Item* item, slots_t slot, bool equip)
 	scriptInterface.callVoidFunction(4);
 }
 
-void onNetworkMessage(Player* player, uint8_t recvByte, NetworkMessage_ptr& msg)
+void onNetworkMessage(Player* player, uint8_t command, NetworkMessage_ptr msg)
 {
-	// Player:onNetworkMessage(recvByte, msg)
+	// Player:onNetworkMessage(command, msg)
 	if (playerHandlers.onNetworkMessage == -1) {
 		return;
 	}
@@ -1401,7 +1401,7 @@ void onNetworkMessage(Player* player, uint8_t recvByte, NetworkMessage_ptr& msg)
 	tfs::lua::pushUserdata(L, player);
 	tfs::lua::setMetatable(L, -1, "Player");
 
-	lua_pushnumber(L, recvByte);
+	lua_pushnumber(L, command);
 
 	tfs::lua::pushUserdata(L, msg.release());
 	tfs::lua::setMetatable(L, -1, "NetworkMessage");

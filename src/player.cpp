@@ -38,11 +38,11 @@ MuteCountMap Player::muteCountMap;
 uint32_t Player::playerAutoID = 0x10000000;
 uint32_t Player::playerIDLimit = 0x20000000;
 
-Player::Player(GameConnection_ptr p) :
+Player::Player(GameConnection_ptr connection_) :
     Creature(),
     lastPing(OTSYS_TIME()),
     lastPong(lastPing),
-    client(std::move(p)),
+    connection(std::move(connection_)),
     storeInbox(new StoreInbox(ITEM_STORE_INBOX))
 {
 	storeInbox->setParent(this);
@@ -720,10 +720,7 @@ void Player::setStorageValue(uint32_t key, std::optional<int32_t> value, bool is
 
 bool Player::canSee(const Position& pos) const
 {
-	if (!client) {
-		return false;
-	}
-	return client->canSee(pos);
+	return CanSeePosition(this, pos);
 }
 
 bool Player::canSeeCreature(const Creature* creature) const
@@ -868,8 +865,8 @@ void Player::sendCancelMessage(ReturnValue message) const { sendCancelMessage(ge
 
 void Player::sendStats()
 {
-	if (client) {
-		client->sendStats();
+	if (connection) {
+		SendStats(connection);
 		lastStatsTrainingTime = getOfflineTrainingTime() / 60 / 1000;
 	}
 }
@@ -881,8 +878,8 @@ void Player::sendPing()
 	bool hasLostConnection = false;
 	if ((timeNow - lastPing) >= 5000) {
 		lastPing = timeNow;
-		if (client) {
-			client->sendPing();
+		if (connection) {
+			SendPing(connection);
 		} else {
 			hasLostConnection = true;
 		}
@@ -907,8 +904,8 @@ void Player::sendPing()
 			return;
 		}
 
-		if (client) {
-			client->logout(true, true);
+		if (connection) {
+			Logout(connection, true, true);
 		} else {
 			g_game.removeCreature(this, true);
 		}
@@ -956,20 +953,20 @@ void Player::setEditHouse(House* house, uint32_t listId /*= 0*/)
 
 void Player::sendHouseWindow(House* house, uint32_t listId) const
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
 	std::string text;
 	if (house->getAccessList(listId, text)) {
-		client->sendHouseWindow(windowTextId, text);
+		SendHouseWindow(connection, windowTextId, text);
 	}
 }
 
 // container
 void Player::sendAddContainerItem(const Container* container, const Item* item)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
@@ -996,13 +993,13 @@ void Player::sendAddContainerItem(const Container* container, const Item* item)
 			item = container->getItemByIndex(firstIndex);
 		}
 
-		client->sendAddContainerItem(cid, index, item);
+		SendAddContainerItem(connection, cid, index, item);
 	}
 }
 
 void Player::sendUpdateContainerItem(const Container* container, int index, const Item* newItem)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
@@ -1017,14 +1014,14 @@ void Player::sendUpdateContainerItem(const Container* container, int index, cons
 		int firstIndex = openContainers[cid].firstIndex;
 		int lastPageIndex = firstIndex + container->capacity() - 1;
 		if(index >= firstIndex && index <= lastPageIndex){
-			client->sendUpdateContainerItem(cid, index, newItem);
+			SendUpdateContainerItem(connection, cid, index, newItem);
 		}
 	}
 }
 
 void Player::sendRemoveContainerItem(const Container* container, int index)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
@@ -1053,7 +1050,7 @@ void Player::sendRemoveContainerItem(const Container* container, int index)
 			lastItem = container->getItemByIndex(lastPageIndex + 1);
 		}
 
-		client->sendRemoveContainerItem(cid, std::max<int>(index, firstIndex), lastItem);
+		SendRemoveContainerItem(connection, cid, std::max<int>(index, firstIndex), lastItem);
 	}
 }
 
@@ -1087,8 +1084,8 @@ void Player::openSavedContainers()
 
 	// fix broken containers when logged in from another location
 	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
-		client->sendEmptyContainer(cid);
-		client->sendCloseContainer(cid);
+		SendEmptyContainer(connection, cid);
+		SendCloseContainer(connection, cid);
 	}
 
 	// send actual containers
@@ -1471,26 +1468,26 @@ void Player::onRemoveContainerItem(const Container* container, const Item* item)
 
 void Player::onCloseContainer(const Container* container)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
 	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
 		if (openContainers[cid].container == container) {
-			client->sendCloseContainer(cid);
+			SendCloseContainer(connection, cid);
 		}
 	}
 }
 
 void Player::onSendContainer(const Container* container)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
 	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
 		if (openContainers[cid].container == container) {
-			client->sendContainer(cid, container, openContainers[cid].firstIndex);
+			SendContainer(connection, cid, container, openContainers[cid].firstIndex);
 		}
 	}
 }
@@ -1587,8 +1584,8 @@ void Player::onThink(uint32_t interval)
 		const int32_t kickAfterMinutes = getNumber(ConfigManager::KICK_AFTER_MINUTES);
 		if (idleTime > (kickAfterMinutes * 60000) + 60000) {
 			kickPlayer(true);
-		} else if (client && idleTime == 60000 * kickAfterMinutes) {
-			client->sendTextMessage(TextMessage(
+		} else if (connection && idleTime == 60000 * kickAfterMinutes) {
+			SendTextMessage(connection, TextMessage(
 			    MESSAGE_STATUS_WARNING,
 			    fmt::format(
 			        "There was no variation in your behaviour for {:d} minutes. You will be disconnected in one minute if there is no change in your actions until then.",
@@ -2076,8 +2073,8 @@ BlockType_t Player::blockHit(Creature* attacker, CombatType_t combatType, int32_
 
 boost::asio::ip::address Player::getIP() const
 {
-	if (client) {
-		return client->getIP();
+	if (connection) {
+		return GetRemoteAddress(connection);
 	}
 
 	return {};
@@ -2313,8 +2310,8 @@ void Player::addList()
 void Player::kickPlayer(bool displayEffect)
 {
 	g_creatureEvents->playerLogout(this);
-	if (client) {
-		client->logout(displayEffect, true);
+	if (connection) {
+		Logout(connection, displayEffect, true);
 	} else {
 		g_game.removeCreature(this);
 	}
@@ -2322,7 +2319,7 @@ void Player::kickPlayer(bool displayEffect)
 
 void Player::notifyStatusChange(Player* loginPlayer, VipStatus_t status)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
@@ -2331,12 +2328,12 @@ void Player::notifyStatusChange(Player* loginPlayer, VipStatus_t status)
 		return;
 	}
 
-	client->sendUpdatedVIPStatus(loginPlayer->guid, status);
+	SendUpdatedVIPStatus(connection, loginPlayer->guid, status);
 
 	if (status == VIPSTATUS_ONLINE) {
-		client->sendTextMessage(TextMessage(MESSAGE_STATUS_SMALL, loginPlayer->getName() + " has logged in."));
+		SendTextMessage(connection, TextMessage(MESSAGE_STATUS_SMALL, loginPlayer->getName() + " has logged in."));
 	} else if (status == VIPSTATUS_OFFLINE) {
-		client->sendTextMessage(TextMessage(MESSAGE_STATUS_SMALL, loginPlayer->getName() + " has logged out."));
+		SendTextMessage(connection, TextMessage(MESSAGE_STATUS_SMALL, loginPlayer->getName() + " has logged out."));
 	}
 }
 
@@ -2364,8 +2361,8 @@ bool Player::addVIP(uint32_t vipGuid, const std::string& vipName, VipStatus_t st
 	}
 
 	IOLoginData::addVIPEntry(accountNumber, vipGuid, "", 0, false);
-	if (client) {
-		client->sendVIP(vipGuid, vipName, "", 0, false, status);
+	if (connection) {
+		SendVIP(connection, vipGuid, vipName, "", 0, false, status);
 	}
 	return true;
 }
@@ -2408,8 +2405,8 @@ void Player::autoCloseContainers(const Container* container)
 
 	for (int cid: closeList) {
 		closeContainer(cid);
-		if (client) {
-			client->sendCloseContainer(cid);
+		if (connection) {
+			SendCloseContainer(connection, cid);
 		}
 	}
 }
@@ -3301,8 +3298,8 @@ bool Player::updateSaleShopList(const Item* item)
 		}
 	}
 
-	if (client) {
-		client->sendSaleItemList(shopItemList);
+	if (connection) {
+		SendSaleItemList(connection, shopItemList);
 	}
 	return true;
 }
@@ -4178,12 +4175,12 @@ bool Player::isPremium() const
 		return true;
 	}
 
-	return premiumEndsAt > time(nullptr);
+	return premiumEnd > time(nullptr);
 }
 
-void Player::setPremiumTime(time_t premiumEndsAt)
+void Player::setPremiumEnd(time_t timestamp)
 {
-	this->premiumEndsAt = premiumEndsAt;
+	this->premiumEnd = timestamp;
 	sendBasicData();
 }
 
@@ -4612,12 +4609,12 @@ void Player::onModalWindowHandled(uint32_t modalWindowId) { modalWindows.remove(
 
 void Player::sendModalWindow(const ModalWindow& modalWindow)
 {
-	if (!client) {
+	if (!connection) {
 		return;
 	}
 
 	modalWindows.push_front(modalWindow.id);
-	client->sendModalWindow(modalWindow);
+	SendModalWindow(connection, modalWindow);
 }
 
 void Player::clearModalWindows() { modalWindows.clear(); }
@@ -4628,8 +4625,8 @@ void Player::sendClosePrivate(uint16_t channelId)
 		g_chat->removeUserFromChannel(*this, channelId);
 	}
 
-	if (client) {
-		client->sendClosePrivate(channelId);
+	if (connection) {
+		SendClosePrivate(connection, channelId);
 	}
 }
 

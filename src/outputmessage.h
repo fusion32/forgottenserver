@@ -19,7 +19,9 @@ public:
 	OutputMessage_ptr next;
 	int               start;
 
-	OutputMessage() {
+	OutputMessage() { reset(); }
+
+	void reset(){
 		// NOTE(fusion): We need to leave some room for packet headers and the
 		// largest header is the one that goes with the Tibia packet. It should
 		// have the layout below, which roughly explains why we have 8 bytes of

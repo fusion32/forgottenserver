@@ -439,8 +439,8 @@ Creature = {}
 ---@field removeMount fun(self: Player, mountId: number)
 ---@field hasMount fun(self: Player, mountId: number): boolean
 ---@field toggleMount fun(self: Player, active: boolean)
----@field getPremiumEndsAt fun(self: Player): number
----@field setPremiumEndsAt fun(self: Player, timestamp: number)
+---@field getPremiumEnd fun(self: Player): number
+---@field setPremiumEnd fun(self: Player, timestamp: number)
 ---@field hasBlessing fun(self: Player, blessingId: number): boolean
 ---@field addBlessing fun(self: Player, blessingId: number)
 ---@field removeBlessing fun(self: Player, blessingId: number)
@@ -2099,7 +2099,7 @@ SKILL_LAST = SKILL_FISHING
 configKeys = {
 	-- ConfigKeysBoolean
 	ALLOW_CHANGEOUTFIT = 0,
-	ONE_PLAYER_ON_ACCOUNT = 1,
+	ONE_PLAYER_PER_ACCOUNT = 1,
 	AIMBOT_HOTKEY_ENABLED = 2,
 	REMOVE_RUNE_CHARGES = 3,
 	REMOVE_WEAPON_AMMO = 4,

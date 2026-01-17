@@ -12,13 +12,19 @@ OutputMessage_ptr OutputMessage::make(void){
 	OutputMessage *output;
 	if(!g_outputStack.pop(output)){
 		output = new OutputMessage;
+	}else{
+		output->reset();
 	}
 	return OutputMessage_ptr(output);
 }
 
-void OutputMessageDeleter::operator()(OutputMessage *msg) const {
-	if(!g_outputStack.bounded_push(msg)){
-		delete msg;
+void OutputMessageDeleter::operator()(OutputMessage *output) const {
+	while(output != NULL){
+		OutputMessage_ptr next = std::move(output->next);
+		if(!g_outputStack.bounded_push(output)){
+			delete output;
+		}
+		output = next.release();
 	}
 }
 

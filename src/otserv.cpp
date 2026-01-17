@@ -4,13 +4,13 @@
 #include "otpch.h"
 
 #include "configmanager.h"
+#include "crypto.h"
 #include "databasemanager.h"
 #include "databasetasks.h"
 #include "game.h"
 #include "iomarket.h"
 #include "monsters.h"
 #include "outfit.h"
-#include "rsa.h"
 #include "scheduler.h"
 #include "script.h"
 #include "scriptmanager.h"
@@ -151,6 +151,12 @@ int main(int argc, const char **argv){
 		return EXIT_FAILURE;
 	}
 
+	fmt::print(">> Loading rsa private key\n");
+	if(!RsaLoadPrivateKey()){
+		PrintError("Failed to load rsa private key\n");
+		return EXIT_FAILURE;
+	}
+
 	fmt::print(">> Establishing database connection...");
 	if (!Database::getInstance().connect()) {
 		PrintError("Failed to connect to database.\n");
@@ -281,9 +287,21 @@ int main(int argc, const char **argv){
 
 
 	// SERVICE BIND ADDRESS
-	asio::ip::address bindAddress = getBoolean(ConfigManager::BIND_ONLY_GLOBAL_ADDRESS)
-			? asio::ip::make_address(getString(ConfigManager::IP))
-			: asio::ip::address_v6::any();
+	// IMPORTANT(fusion): Using an IPv6 address here will cause the services to listen
+	// to both IPv4 and IPv6. This is not usually a problem, but it depends on how the
+	// game address is resolved by the client, which will depend on DNS settings or the
+	// address format.
+	//  If you use something like "[::1]" it'll properly be resolved by the client as
+	// an IPv6 address, but if you use "::1" it'll fail to connect. If instead you use
+	// use "127.0.0.1" it'll will resolve as an IPv4, etc...
+	asio::ip::address bindAddress = asio::ip::make_address(getString(ConfigManager::IP));
+	if(!getBoolean(ConfigManager::BIND_ONLY_GLOBAL_ADDRESS)){
+		if(bindAddress.is_v4()){
+			bindAddress = asio::ip::address_v4::any();
+		}else{
+			bindAddress = asio::ip::address_v6::any();
+		}
+	}
 
 	{ // GAME SERVICE
 		asio::ip::tcp::endpoint endpoint(bindAddress, getNumber(ConfigManager::GAME_PORT));

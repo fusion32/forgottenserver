@@ -12,6 +12,7 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/container.cpp
 	${CMAKE_CURRENT_LIST_DIR}/creature.cpp
 	${CMAKE_CURRENT_LIST_DIR}/creatureevent.cpp
+	${CMAKE_CURRENT_LIST_DIR}/crypto.cpp
 	${CMAKE_CURRENT_LIST_DIR}/database.cpp
 	${CMAKE_CURRENT_LIST_DIR}/databasemanager.cpp
 	${CMAKE_CURRENT_LIST_DIR}/databasetasks.cpp
@@ -49,7 +50,6 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/player.cpp
 	${CMAKE_CURRENT_LIST_DIR}/podium.cpp
 	${CMAKE_CURRENT_LIST_DIR}/position.cpp
-	${CMAKE_CURRENT_LIST_DIR}/rsa.cpp
 	${CMAKE_CURRENT_LIST_DIR}/scheduler.cpp
 	${CMAKE_CURRENT_LIST_DIR}/script.cpp
 	${CMAKE_CURRENT_LIST_DIR}/scriptmanager.cpp
@@ -68,7 +68,6 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/vocation.cpp
 	${CMAKE_CURRENT_LIST_DIR}/weapons.cpp
 	${CMAKE_CURRENT_LIST_DIR}/wildcardtree.cpp
-	${CMAKE_CURRENT_LIST_DIR}/xtea.cpp
 	)
 
 set(tfs_HDR
@@ -84,6 +83,7 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/configmanager.h
 	${CMAKE_CURRENT_LIST_DIR}/const.h
 	${CMAKE_CURRENT_LIST_DIR}/container.h
+	${CMAKE_CURRENT_LIST_DIR}/crypto.h
 	${CMAKE_CURRENT_LIST_DIR}/creatureevent.h
 	${CMAKE_CURRENT_LIST_DIR}/creature.h
 	${CMAKE_CURRENT_LIST_DIR}/database.h
@@ -127,7 +127,6 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/podium.h
 	${CMAKE_CURRENT_LIST_DIR}/position.h
 	${CMAKE_CURRENT_LIST_DIR}/pugicast.h
-	${CMAKE_CURRENT_LIST_DIR}/rsa.h
 	${CMAKE_CURRENT_LIST_DIR}/scheduler.h
 	${CMAKE_CURRENT_LIST_DIR}/script.h
 	${CMAKE_CURRENT_LIST_DIR}/scriptmanager.h
@@ -149,7 +148,6 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/vocation.h
 	${CMAKE_CURRENT_LIST_DIR}/weapons.h
 	${CMAKE_CURRENT_LIST_DIR}/wildcardtree.h
-	${CMAKE_CURRENT_LIST_DIR}/xtea.h
 	)
 
 set(tfs_LIBS

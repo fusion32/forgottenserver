@@ -14,12 +14,21 @@ struct VIPEntry;
 
 using ItemBlockList = std::list<std::pair<int32_t, Item*>>;
 
+struct SessionData {
+	uint32_t accountId;
+	uint32_t characterId;
+	boost::asio::ip::address address;
+};
+
 class IOLoginData
 {
 public:
 	static uint32_t getAccountIdByPlayerName(const std::string& playerName);
 	static uint32_t getAccountIdByPlayerId(uint32_t playerId);
 
+	static bool loadSession(std::string_view sessionToken,
+							std::string_view characterName,
+							SessionData *outSessionData);
 	static AccountType_t getAccountType(uint32_t accountId);
 	static void setAccountType(uint32_t accountId, AccountType_t accountType);
 	static void updateOnlineStatus(uint32_t guid, bool login);

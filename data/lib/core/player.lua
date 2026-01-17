@@ -56,11 +56,11 @@ function Player.getLossPercent(self)
 end
 
 function Player.getPremiumTime(self)
-	return math.max(0, self:getPremiumEndsAt() - os.time())
+	return math.max(0, self:getPremiumEnd() - os.time())
 end
 
 function Player.setPremiumTime(self, seconds)
-	self:setPremiumEndsAt(os.time() + seconds)
+	self:setPremiumEnd(os.time() + seconds)
 	return true
 end
 

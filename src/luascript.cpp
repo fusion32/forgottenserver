@@ -1704,12 +1704,12 @@ void LuaScriptInterface::registerFunctions()
 	registerEnum(L, CREATURETYPE_SUMMON_OWN);
 	registerEnum(L, CREATURETYPE_SUMMON_OTHERS);
 
-	registerEnum(L, CLIENTOS_LINUX);
-	registerEnum(L, CLIENTOS_WINDOWS);
-	registerEnum(L, CLIENTOS_FLASH);
-	registerEnum(L, CLIENTOS_OTCLIENT_LINUX);
-	registerEnum(L, CLIENTOS_OTCLIENT_WINDOWS);
-	registerEnum(L, CLIENTOS_OTCLIENT_MAC);
+	registerEnum(L, TERMINAL_LINUX);
+	registerEnum(L, TERMINAL_WINDOWS);
+	registerEnum(L, TERMINAL_FLASH);
+	registerEnum(L, TERMINAL_OTCLIENT_LINUX);
+	registerEnum(L, TERMINAL_OTCLIENT_WINDOWS);
+	registerEnum(L, TERMINAL_OTCLIENT_MAC);
 
 	registerEnum(L, FIGHTMODE_ATTACK);
 	registerEnum(L, FIGHTMODE_BALANCED);
@@ -2243,7 +2243,7 @@ void LuaScriptInterface::registerFunctions()
 	registerTable(L, "configKeys");
 
 	registerEnumIn(L, "configKeys", ConfigManager::ALLOW_CHANGEOUTFIT);
-	registerEnumIn(L, "configKeys", ConfigManager::ONE_PLAYER_ON_ACCOUNT);
+	registerEnumIn(L, "configKeys", ConfigManager::ONE_PLAYER_PER_ACCOUNT);
 	registerEnumIn(L, "configKeys", ConfigManager::AIMBOT_HOTKEY_ENABLED);
 	registerEnumIn(L, "configKeys", ConfigManager::REMOVE_RUNE_CHARGES);
 	registerEnumIn(L, "configKeys", ConfigManager::REMOVE_WEAPON_AMMO);
@@ -2849,8 +2849,8 @@ void LuaScriptInterface::registerFunctions()
 	registerMethod(L, "Player", "hasMount", LuaScriptInterface::luaPlayerHasMount);
 	registerMethod(L, "Player", "toggleMount", LuaScriptInterface::luaPlayerToggleMount);
 
-	registerMethod(L, "Player", "getPremiumEndsAt", LuaScriptInterface::luaPlayerGetPremiumEndsAt);
-	registerMethod(L, "Player", "setPremiumEndsAt", LuaScriptInterface::luaPlayerSetPremiumEndsAt);
+	registerMethod(L, "Player", "getPremiumEnd", LuaScriptInterface::luaPlayerGetPremiumEnd);
+	registerMethod(L, "Player", "setPremiumEnd", LuaScriptInterface::luaPlayerSetPremiumEnd);
 
 	registerMethod(L, "Player", "hasBlessing", LuaScriptInterface::luaPlayerHasBlessing);
 	registerMethod(L, "Player", "addBlessing", LuaScriptInterface::luaPlayerAddBlessing);
@@ -10413,7 +10413,7 @@ int LuaScriptInterface::luaPlayerOpenChannel(lua_State* L)
 	uint16_t channelId = tfs::lua::getNumber<uint16_t>(L, 2);
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (player) {
-		g_game.playerOpenChannel(player->getID(), channelId);
+		g_game.playerOpenChannel(player, channelId);
 		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);
@@ -10427,7 +10427,7 @@ int LuaScriptInterface::luaPlayerLeaveChannel(lua_State* L)
 	uint16_t channelId = tfs::lua::getNumber<uint16_t>(L, 2);
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (player) {
-		g_game.playerCloseChannel(player->getID(), channelId);
+		g_game.playerCloseChannel(player, channelId);
 		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);
@@ -10676,21 +10676,21 @@ int LuaScriptInterface::luaPlayerToggleMount(lua_State* L)
 	return 1;
 }
 
-int LuaScriptInterface::luaPlayerGetPremiumEndsAt(lua_State* L)
+int LuaScriptInterface::luaPlayerGetPremiumEnd(lua_State* L)
 {
-	// player:getPremiumEndsAt()
+	// player:getPremiumEnd()
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (player) {
-		lua_pushnumber(L, player->premiumEndsAt);
+		lua_pushnumber(L, player->premiumEnd);
 	} else {
 		lua_pushnil(L);
 	}
 	return 1;
 }
 
-int LuaScriptInterface::luaPlayerSetPremiumEndsAt(lua_State* L)
+int LuaScriptInterface::luaPlayerSetPremiumEnd(lua_State* L)
 {
-	// player:setPremiumEndsAt(timestamp)
+	// player:setPremiumEnd(timestamp)
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (!player) {
 		lua_pushnil(L);
@@ -10699,7 +10699,7 @@ int LuaScriptInterface::luaPlayerSetPremiumEndsAt(lua_State* L)
 
 	time_t timestamp = tfs::lua::getNumber<time_t>(L, 2);
 
-	player->setPremiumTime(timestamp);
+	player->setPremiumEnd(timestamp);
 	IOLoginData::updatePremiumTime(player->getAccount(), timestamp);
 	tfs::lua::pushBoolean(L, true);
 	return 1;
@@ -10908,8 +10908,9 @@ int LuaScriptInterface::luaPlayerGetClient(lua_State* L)
 	Player* player = tfs::lua::getUserdata<Player>(L, 1);
 	if (player) {
 		lua_createtable(L, 0, 2);
-		setField(L, "version", player->getProtocolVersion());
-		setField(L, "os", player->getOperatingSystem());
+		setField(L, "type", player->getTerminalType());
+		setField(L, "version", player->getTerminalVersion());
+		setField(L, "os", player->getTerminalType());
 	} else {
 		lua_pushnil(L);
 	}

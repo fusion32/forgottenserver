@@ -745,8 +745,8 @@ private:
 	static int luaPlayerHasMount(lua_State* L);
 	static int luaPlayerToggleMount(lua_State* L);
 
-	static int luaPlayerGetPremiumEndsAt(lua_State* L);
-	static int luaPlayerSetPremiumEndsAt(lua_State* L);
+	static int luaPlayerGetPremiumEnd(lua_State* L);
+	static int luaPlayerSetPremiumEnd(lua_State* L);
 
 	static int luaPlayerHasBlessing(lua_State* L);
 	static int luaPlayerAddBlessing(lua_State* L);

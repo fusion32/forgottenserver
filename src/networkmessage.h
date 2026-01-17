@@ -19,9 +19,20 @@ public:
 	int wrpos;
 	std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
 
-	NetworkMessage() {
+	NetworkMessage(void) {
 		rdpos = 0;
 		wrpos = 0;
+	}
+
+	NetworkMessage(const NetworkMessage &other){
+		rdpos = 0;
+		wrpos = 0;
+		if(!other.isOverrun()){
+			wrpos = other.getRemainingLength();
+			memcpy(buffer.data(),
+				other.getRemainingBuffer(),
+				other.getRemainingLength());
+		}
 	}
 
 	bool canRead(int n) const { return (rdpos + n) <= wrpos; }
@@ -60,9 +71,13 @@ public:
 		}
 	}
 
-	void discardPadding(int padding) {
-		assert(wrpos >= padding);
+	bool discardPadding(int padding) {
+		if(padding > getRemainingLength()){
+			return false;
+		}
+
 		wrpos -= padding;
+		return true;
 	}
 
 	uint8_t peekByte(int offset = 0)
