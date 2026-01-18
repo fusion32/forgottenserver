@@ -24,7 +24,86 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"unsafe"
 )
+
+/*
+// ZLIB Interop
+// ==============================================================================
+// IMPORTANT(fusion): The client now uses a single inflate stream with no FINAL
+// blocks in between. Each packet is compressed with Z_SYNC_FLUSH and stripped
+// of the "\x00\x00\xFF\xFF" sequence at the end.
+//  Go's "flate" package does handle raw deflate but doesn't seem to support
+// streaming data, which is what we need here. For that reason, I'm using CGo to
+// interop with ZLIB, which I honestly didn't think would work very well, but does.
+
+//#cgo CFLAGS: -g
+#cgo LDFLAGS: -lz
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <zlib.h>
+
+z_stream *ZStreamAlloc(void){
+	return (z_stream*)malloc(sizeof(z_stream));
+}
+
+void ZStreamFree(z_stream *strm){
+	free(strm);
+}
+
+int InflateInitWrapper(z_stream *strm){
+	return inflateInit2(strm, -15);
+}
+*/
+import "C"
+
+func InflateDestroy(strm *C.z_stream) {
+	C.inflateEnd(strm)
+	C.ZStreamFree(strm)
+}
+
+func InflateNew() (strm *C.z_stream, err error) {
+	strm = C.ZStreamAlloc()
+	ret := C.InflateInitWrapper(strm)
+	if ret != C.Z_OK {
+		err = fmt.Errorf("failed to initialize inflate stream: (%v) %v",
+			ret, InflateMessage(strm))
+	}
+	return
+}
+
+func InflateMessage(strm *C.z_stream) string {
+	msg := "no message"
+	if strm.msg != nil {
+		msg = unsafe.String((*byte)(unsafe.Pointer(strm.msg)), C.strlen(strm.msg))
+	}
+	return msg
+}
+
+func InflateSyncFlush(strm *C.z_stream, input []byte) (output []byte, err error) {
+	buffer := bytes.Buffer{}
+	strm.next_in = (*C.Bytef)(unsafe.SliceData(input))
+	strm.avail_in = (C.uInt)(len(input))
+	for strm.avail_in > 0 {
+		var tmp [4096]byte
+		strm.next_out = (*C.Bytef)(unsafe.Pointer(&tmp))
+		strm.avail_out = (C.uInt)(len(tmp))
+		ret := C.inflate(strm, C.Z_SYNC_FLUSH)
+		if ret != C.Z_OK {
+			err = fmt.Errorf("failed to inflate stream: (%v) %v",
+				ret, InflateMessage(strm))
+			return
+		}
+
+		n := (len(tmp) - int(strm.avail_out))
+		buffer.Write(tmp[:n])
+	}
+
+	output = buffer.Bytes()
+	return
+}
 
 // JSON Types
 // ==============================================================================
@@ -235,6 +314,22 @@ func (r *BufReader) Overflowed() bool {
 
 func (r *BufReader) BytesAvailable() int {
 	return max(0, len(r.Buffer)-r.Position)
+}
+
+func (r *BufReader) Remainder() []byte {
+	result := []byte{}
+	if !r.Overflowed() {
+		result = r.Buffer[r.Position:]
+	}
+	return result
+}
+
+func (r *BufReader) DiscardPadding(n int) bool {
+	if n > r.BytesAvailable() {
+		return false
+	}
+	r.Buffer = r.Buffer[:len(r.Buffer)-n]
+	return true
 }
 
 func (r *BufReader) ReadFlag() bool {
@@ -644,6 +739,10 @@ func HttpRequestHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	// NOTE(fusion): Always override the content length to make sure it has the
+	// correct value, in case we modified the response.
+	w.Header().Set("Content-Length", strconv.Itoa(len(output)))
+
 	w.WriteHeader(res.StatusCode)
 	w.Write(output)
 }
@@ -656,6 +755,13 @@ func RunHttpProxy() {
 
 // Game Proxy
 // ==============================================================================
+type PlainGamePacket struct {
+	sequence   uint32
+	compressed bool
+	padding    int
+	payload    []byte
+}
+
 func ReadByte(r io.Reader) (byte, error) {
 	var buf [1]byte
 	_, err := io.ReadFull(r, buf[:])
@@ -709,7 +815,7 @@ func WriteGamePacketLen(dst []byte, packetLen int) error {
 	return nil
 }
 
-func ReadPacket(r io.Reader) (data []byte, err error) {
+func ReadGamePacket(r io.Reader) (data []byte, err error) {
 	var (
 		packetLenBuffer [2]byte
 		n               int
@@ -729,7 +835,7 @@ func ReadPacket(r io.Reader) (data []byte, err error) {
 	return
 }
 
-func WritePacket(w io.Writer, data []byte) (n int, err error) {
+func WriteGamePacket(w io.Writer, data []byte) (n int, err error) {
 	var packetLenBuffer [2]byte
 	err = WriteGamePacketLen(packetLenBuffer[:], len(data))
 	if err != nil {
@@ -745,12 +851,12 @@ func WritePacket(w io.Writer, data []byte) (n int, err error) {
 }
 
 func ForwardNextPacket(w io.Writer, r io.Reader) (data []byte, err error) {
-	data, err = ReadPacket(r)
+	data, err = ReadGamePacket(r)
 	if err != nil {
 		return
 	}
 
-	_, err = WritePacket(w, data)
+	_, err = WriteGamePacket(w, data)
 	return
 }
 
@@ -809,7 +915,7 @@ func InterceptGameHandshake(client net.Conn, server net.Conn) (xteaKey [4]uint32
 
 	// NOTE(fusion): Read login packet, decrypt with our private key, extract
 	// the XTEA key, encrypt with the public key, and forward it.
-	login, err = ReadPacket(client)
+	login, err = ReadGamePacket(client)
 	if err != nil {
 		err = fmt.Errorf("failed to read login packet: %w", err)
 		return
@@ -855,7 +961,7 @@ func InterceptGameHandshake(client net.Conn, server net.Conn) (xteaKey [4]uint32
 			return
 		}
 
-		LogBuffer("client -> server [Login]", login)
+		LogBuffer("server <- client [Login]", login)
 		xteaKey[0] = binary.LittleEndian.Uint32(asymmetricData[1:])
 		xteaKey[1] = binary.LittleEndian.Uint32(asymmetricData[5:])
 		xteaKey[2] = binary.LittleEndian.Uint32(asymmetricData[9:])
@@ -864,12 +970,53 @@ func InterceptGameHandshake(client net.Conn, server net.Conn) (xteaKey [4]uint32
 		RsaEncryptNoPadding(g_RsaPublicKey, asymmetricData)
 	}
 
-	_, err = WritePacket(server, login)
+	_, err = WriteGamePacket(server, login)
 	if err != nil {
 		err = fmt.Errorf("failed to write login packet: %w", err)
 		return
 	}
 
+	return
+}
+
+func InterceptGamePacket(xteaKey [4]uint32, inflateStream *C.z_stream, input []byte) (packet PlainGamePacket, err error) {
+	if len(input)%8 != 4 {
+		err = fmt.Errorf("invalid packet length (size=%v)", len(input))
+		return
+	}
+
+	sequence := binary.LittleEndian.Uint32(input[0:])
+	compressed := (sequence&0xC0000000 == 0xC0000000)
+	XTEADecrypt(xteaKey, input[4:])
+	padding := int(input[4])
+	payload := input[5:]
+	if padding >= 8 || padding >= len(payload) {
+		err = fmt.Errorf("invalid padding (%v)", padding)
+		return
+	}
+
+	payload = payload[:len(payload)-padding]
+	if compressed {
+		// NOTE(fusion): This "\x00\x00\xFF\xFF" sequence is part of the output
+		// of deflate with mode Z_SYNC_FLUSH which gets stripped before being
+		// added to a packet. There is a small comment about it in the link below,
+		// which is referenced by zlib's home page.
+		//  HREF: https://www.bolet.org/~pornin/deflate-flush.html
+		payload = append(payload, 0x00, 0x00, 0xFF, 0xFF)
+		if inflateStream != nil {
+			payload, err = InflateSyncFlush(inflateStream, payload)
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	packet = PlainGamePacket{
+		sequence:   sequence,
+		compressed: compressed,
+		padding:    padding,
+		payload:    payload,
+	}
 	return
 }
 
@@ -908,17 +1055,29 @@ func GameConnectionHandler(client net.Conn) {
 	}
 
 	intercept := false
-	interceptXtea := [4]uint32{}
+	xteaKey := [4]uint32{}
+	inflateStream := (*C.z_stream)(nil)
 	if g_RsaPublicKey != nil && g_RsaPrivateKey != nil {
 		log.Printf("%v: intercepting handshake...", client.RemoteAddr())
-		if interceptXtea, err = InterceptGameHandshake(client, server); err != nil {
+		if xteaKey, err = InterceptGameHandshake(client, server); err != nil {
 			log.Printf("%v: failed to intercept game handshake: %v", client.RemoteAddr(), err)
 			return
 		}
+
+		if inflateStream, err = InflateNew(); err != nil {
+			log.Printf("%v: failed to initialize inflate stream: %v", client.RemoteAddr(), err)
+			return
+		}
+
+		// NOTE(fusion): Deferred statements are executed when the surrounding
+		// function returns, not at the end of the enclosing scope like other
+		// languages.
+		defer InflateDestroy(inflateStream)
+
 		intercept = true
 	}
 
-	log.Printf("proxy %v -> %v now ACTIVE...", client.RemoteAddr(), server.RemoteAddr())
+	log.Printf("proxy %v <-> %v now ACTIVE...", client.RemoteAddr(), server.RemoteAddr())
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
@@ -936,14 +1095,18 @@ func GameConnectionHandler(client net.Conn) {
 			}
 
 			if intercept {
-				if len(data)%8 != 4 {
-					log.Printf("invalid packet length (size=%v)", len(data))
+				var packet PlainGamePacket
+				if packet, err = InterceptGamePacket(xteaKey, inflateStream, data); err != nil {
+					log.Printf("%v: failed to intercept game packet: %v", client.RemoteAddr(), err)
 					break
 				}
-				XTEADecrypt(interceptXtea, data[4:])
-			}
 
-			LogBuffer("server -> client", data)
+				name := fmt.Sprintf("server -> client [SEQ=%08X COMPRESSED=%v PADDING=%v]",
+					packet.sequence, packet.compressed, packet.padding)
+				LogBuffer(name, packet.payload)
+			} else {
+				LogBuffer("server -> client", data)
+			}
 		}
 	}()
 
@@ -955,20 +1118,24 @@ func GameConnectionHandler(client net.Conn) {
 			data, err := ForwardNextPacket(server, client)
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("%v: client -> server error: %v", client.RemoteAddr(), err)
+					log.Printf("%v: server <- client error: %v", client.RemoteAddr(), err)
 				}
 				break
 			}
 
 			if intercept {
-				if len(data)%8 != 4 {
-					log.Printf("invalid packet length (size=%v)", len(data))
+				var packet PlainGamePacket
+				if packet, err = InterceptGamePacket(xteaKey, nil, data); err != nil {
+					log.Printf("%v: failed to intercept game packet: %v", client.RemoteAddr(), err)
 					break
 				}
-				XTEADecrypt(interceptXtea, data[4:])
-			}
 
-			LogBuffer("client -> server", data)
+				name := fmt.Sprintf("server <- client [SEQ=%08X COMPRESSED=%v PADDING=%v]",
+					packet.sequence, packet.compressed, packet.padding)
+				LogBuffer(name, packet.payload)
+			} else {
+				LogBuffer("server <- client", data)
+			}
 		}
 	}()
 
@@ -1005,7 +1172,6 @@ var (
 	g_RsaPublicPem  string = ""
 	g_RsaPrivatePem string = ""
 	g_WorldOverride string = ""
-	g_GameIntercept bool   = false
 )
 
 func main() {
