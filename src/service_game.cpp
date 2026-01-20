@@ -3478,9 +3478,9 @@ static void PerformLogin(GameConnection_ptr connection, bool isGamemaster,
         return;
     }
 
-    Player* foundPlayer = g_game.getPlayerByGUID(sessionData.characterId);
-    if (!foundPlayer || getBoolean(ConfigManager::ALLOW_CLONES)) {
-        Player *player = new Player(connection);
+    Player* player = g_game.getPlayerByGUID(sessionData.characterId);
+    if (!player || getBoolean(ConfigManager::ALLOW_CLONES)) {
+        player = new Player(connection);
         player->incrementReferenceCounter();
         player->setID();
         player->setGUID(sessionData.characterId);
@@ -3556,65 +3556,30 @@ static void PerformLogin(GameConnection_ptr connection, bool isGamemaster,
         player->lastIP = player->getIP();
         player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
         ResolveLogin(connection, GAME_CONNECTION_OK);
-    }
-#if 0
-    else {
-        if (eventConnect != 0 || !getBoolean(ConfigManager::REPLACE_KICK_ON_LOGIN)) {
-            // Already trying to connect
-            disconnectClient("You are already logged in.");
+    }else{
+        if(player->isRemoved()){
+            SendLoginError(connection, "You are already logged in.");
             return;
         }
 
-        if (foundPlayer->client) {
-            foundPlayer->disconnect();
-            foundPlayer->isConnecting = true;
-
-            eventConnect = g_scheduler.addEvent(
-                createSchedulerTask(1000, [=, self = shared_from_this(), playerID = foundPlayer->getID()]() {
-                    self->connect(playerID, terminalType);
-                }));
-        } else {
-            connect(foundPlayer->getID(), terminalType);
+        if(player->connection){
+            Detach(player->connection);
         }
+
+        player->connection = connection;
+        connection->player = player;
+        player->incrementReferenceCounter();
+
+        g_chat->removeUserFromAllChannels(*player);
+        player->clearModalWindows();
+        player->onCreatureAppear(player, false, CONST_ME_NONE);
+        player->lastIP = player->getIP();
+        player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
+        player->resetIdleTime();
+        g_creatureEvents->playerReconnect(player);
+        ResolveLogin(connection, GAME_CONNECTION_OK);
     }
-#endif
 }
-
-#if 0
-void GameConnection::connect(uint32_t playerId, TerminalType terminalType)
-{
-    // dispatcher thread
-    eventConnect = 0;
-
-    Player* foundPlayer = g_game.getPlayerByID(playerId);
-    if (!foundPlayer || foundPlayer->client) {
-        disconnectClient("You are already logged in.");
-        return;
-    }
-
-    if (isConnectionExpired()) {
-        // GameConnection::release() has been called at this point and the Connection object no longer exists, so we
-        // return to prevent leakage of the Player.
-        return;
-    }
-
-    player = foundPlayer;
-    player->incrementReferenceCounter();
-
-    g_chat->removeUserFromAllChannels(*player);
-    player->clearModalWindows();
-    player->isConnecting = false;
-
-    player->client = shared_from_this();
-    player->onCreatureAppear(player, false, CONST_ME_NONE);
-    player->lastIP = player->getIP();
-    player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
-    player->resetIdleTime();
-    acceptPackets = true;
-
-    g_creatureEvents->playerReconnect(player);
-}
-#endif
 
 //==============================================================================
 // Service Implementation

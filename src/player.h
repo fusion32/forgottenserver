@@ -1322,7 +1322,6 @@ public:
 	bool wasMounted = false;
 	bool ghostMode = false;
 	bool pzLocked = false;
-	bool isConnecting = false;
 	bool addAttackSkillPoint = false;
 	bool inventoryAbilities[CONST_SLOT_LAST + 1] = {};
 	bool randomizeMount = false;

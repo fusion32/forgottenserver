@@ -120,8 +120,10 @@ int main(int argc, const char **argv){
 	LOG("Linked with {}", LUA_RELEASE);
 #endif
 
+	LOG("");
 	LOG("A server developed by {}", STATUS_SERVER_DEVELOPERS);
 	LOG("Visit our forum for updates, support, and resources: https://otland.net/.");
+	LOG("");
 
 	g_game.setGameState(GAME_STATE_STARTUP);
 

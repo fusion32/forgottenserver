@@ -132,12 +132,14 @@ void NetworkMessage::addItem(const Item* item)
 
 	if (it.isContainer()) {
 		addByte(0x00);
+#if 0
 		const Container* container = item->getContainer();
 		if (container && it.weaponType == WEAPON_QUIVER) {
 			add<uint32_t>(0); // ?
 			add<uint32_t>(container->getAmmoCount());
 			add<uint32_t>(0); // ?
 		}
+#endif
 	}
 
 	// display outfit on the podium
