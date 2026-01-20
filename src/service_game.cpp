@@ -1,7 +1,8 @@
-// IMPORTANT(fusion): All functions in this file expect to be called in the game
-// thread, except for the service implementation at the very bottom. This also
-// has implications to which members of GameConnection can be accessed at any
-// given time
+// IMPORTANT(fusion): All functions in this file expect to be called from the
+// game thread, except for the service implementation at the very bottom. This
+// also has implications to which members of GameConnection can be accessed at
+// any given time, which is why there are a few comments on GameConnection
+// related to this.
 
 #include "otpch.h"
 
@@ -27,10 +28,11 @@
 #include "storeinbox.h"
 #include "tasks.h"
 
+#include <zlib.h>
+
 extern CreatureEvents* g_creatureEvents;
 extern Chat* g_chat;
 extern Game g_game;
-
 
 enum SessionEndReason {
     SESSION_END_LOGOUT      = 0,
@@ -78,7 +80,7 @@ enum GameConnectionState {
     GAME_CONNECTION_LOGIN = 0,
     GAME_CONNECTION_OK,
     GAME_CONNECTION_CLOSE,
-    GAME_CONNECTION_ABORT,
+    GAME_CONNECTION_DONE,
 };
 
 struct GameConnection{
@@ -91,14 +93,34 @@ struct GameConnection{
         // no-op
     }
 
+    ~GameConnection(void){
+        // TODO(fusion): This will probably always get an Z_DATA_ERROR because
+        // there hasn't been a FINAL block to wrap the compression stream but
+        // it doesn't really matter since the connection is done. We might want
+        // to filter those out.
+        if(deflateStreamInitialized){
+            int ret = deflateEnd(&deflateStream);
+            if(ret != Z_OK){
+                std::cout << "Failed to end deflate stream: (" << ret << ") "
+                        << (deflateStream.msg ? deflateStream.msg : "no message")
+                        << std::endl;
+            }
+        }
+    }
+
     // NOTE(fusion): This data is synchronized by being accessed only in the
     // network thread, excluding atomics which can be shared.
     boost::asio::ip::tcp::socket            socket;
     boost::asio::steady_timer               loginTimer;
     std::atomic<GameConnectionState>        state = GAME_CONNECTION_LOGIN;
+    bool                                    xteaKeyInitialized = false;
+    bool                                    deflateStreamInitialized = false;
     uint32_t                                serverSequence = 0;
     uint32_t                                clientSequence = 0;
-    std::array<uint32_t, 4>                 xteaKey;
+    std::array<uint32_t, 4>                 xteaKey = {};
+    // TODO(fusion): Does the client ever send compressed data? We might need
+    // an inflateStream here if that's the case.
+    z_stream                                deflateStream = {};
 
     // NOTE(fusion): The output queue is shared between the network and game
     // threads so it needs to be explicitly synchronized.
@@ -124,11 +146,18 @@ static bool Transition(const GameConnection_ptr &connection,
             GameConnectionState from, GameConnectionState to){
     GameConnectionState expected = from;
     return connection->state.compare_exchange_strong(
-            expected, to, std::memory_order_seq_cst);
+            expected, to, std::memory_order_relaxed);
+}
+
+static bool ForceTransition(const GameConnection_ptr &connection,
+                            GameConnectionState to){
+    GameConnectionState from = connection->state.exchange(
+                                to, std::memory_order_relaxed);
+    return from != to;
 }
 
 static GameConnectionState CurrentState(const GameConnection_ptr &connection){
-    return connection->state.load(std::memory_order_acquire);
+    return connection->state.load(std::memory_order_relaxed);
 }
 
 static void ResolveLogin(const GameConnection_ptr &connection,
@@ -856,35 +885,34 @@ void SendStats(const GameConnection_ptr &connection){
     NetworkMessage msg;
     msg.addByte(0xA0);
 
+    Condition *regen = player->getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT);
     msg.add<uint32_t>(static_cast<uint32_t>(player->getHealth()));
     msg.add<uint32_t>(static_cast<uint32_t>(player->getMaxHealth()));
-
     msg.add<uint32_t>(player->hasFlag(PlayerFlag_HasInfiniteCapacity) ? 1000000 : player->getFreeCapacity());
     msg.add<uint64_t>(player->getExperience());
-
     msg.add<uint16_t>(player->getLevel());
-    msg.addByte(player->getLevelPercent());
-
-    msg.add<uint16_t>(player->getClientExpDisplay());
-    msg.add<uint16_t>(player->getClientLowLevelBonusDisplay());
-    msg.add<uint16_t>(0); // store exp bonus
-    msg.add<uint16_t>(player->getClientStaminaBonusDisplay());
-
+    msg.add<uint16_t>((int)player->getLevelPercent() * 100);
+    msg.add<uint16_t>(player->getClientExpDisplay());           // base xp percent
+    msg.add<uint16_t>(player->getClientLowLevelBonusDisplay()); // low level bonus xp percent
+    msg.add<uint16_t>(0);                                       // store bonus xp percent
+    msg.add<uint16_t>(player->getClientStaminaBonusDisplay());  // stamina bonus xp percent
     msg.add<uint32_t>(static_cast<uint32_t>(player->getMana()));
     msg.add<uint32_t>(static_cast<uint32_t>(player->getMaxMana()));
-
     msg.addByte(player->getSoul());
-    msg.add<uint16_t>(player->getStaminaMinutes());
-    msg.add<uint16_t>(player->getBaseSpeed() / 2);
+    msg.add<uint16_t>(player->getStaminaMinutes()); // stamina minutes
+    msg.add<uint16_t>(player->getBaseSpeed() / 2); // base (?) speed
+    msg.add<uint16_t>(regen ? regen->getTicks() / 1000 : 0x00); // regen seconds
+    msg.add<uint16_t>(player->getOfflineTrainingTime() / 60 / 1000); // offline training minutes
 
-    Condition* condition = player->getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT);
-    msg.add<uint16_t>(condition ? condition->getTicks() / 1000 : 0x00);
+    // TODO(fusion): Figure out the remaining bytes.
+    msg.add<uint16_t>(0x0000);
+    msg.add<uint16_t>(0x0001);
+    msg.add<uint16_t>(0x0000);
+    msg.add<uint16_t>(0x0000);
+    msg.add<uint16_t>(0x0000);
+    msg.addByte(0x00);
 
-    msg.add<uint16_t>(player->getOfflineTrainingTime() / 60 / 1000);
-
-    msg.add<uint16_t>(0); // xp boost time (seconds)
-    msg.addByte(0x00);    // enables exp boost in the store
-
+#if 0
     if (ConditionManaShield* conditionManaShield =
             dynamic_cast<ConditionManaShield*>(player->getCondition(CONDITION_MANASHIELD_BREAKABLE))) {
         msg.add<uint32_t>(conditionManaShield->getManaShield());
@@ -893,6 +921,7 @@ void SendStats(const GameConnection_ptr &connection){
         msg.add<uint32_t>(0); // remaining mana shield
         msg.add<uint32_t>(0); // total mana shield
     }
+#endif
 
     WriteToOutputBuffer(connection, msg);
 }
@@ -905,30 +934,20 @@ void SendExperienceTracker(const GameConnection_ptr &connection, int64_t rawExp,
     WriteToOutputBuffer(connection, msg);
 }
 
-void SendClientFeatures(const GameConnection_ptr &connection){
-    const Player *player = connection->player;
-
+void SendServerConfig(const GameConnection_ptr &connection){
     NetworkMessage msg;
     msg.addByte(0x17);
-
-    msg.add<uint32_t>(player->getID());
+    msg.add<uint32_t>(connection->player->getID());
     msg.add<uint16_t>(50); // beat duration
-
     msg.addDouble(Creature::speedA, 3);
     msg.addDouble(Creature::speedB, 3);
     msg.addDouble(Creature::speedC, 3);
 
-    // can report bugs?
-    msg.addByte(player->getAccountType() >= ACCOUNT_TYPE_TUTOR ? 0x01 : 0x00);
-
-    msg.addByte(0x00); // can change pvp framing option
-    msg.addByte(0x00); // expert mode button enabled
-
-    msg.add<uint16_t>(0x00); // store images url (string or u16 0x00)
-    msg.add<uint16_t>(25);   // premium coin package size
-
-    msg.addByte(0x00); // exiva button enabled (bool)
-    msg.addByte(0x00); // Tournament button (bool)
+    msg.addByte(0x01);      // ?
+    msg.addByte(0x01);      // ?
+    msg.addString("");      // "https://static.tibia.com/images/store"
+    msg.add<uint16_t>(25);  // ?
+    msg.addByte(0);         // ?
 
     WriteToOutputBuffer(connection, msg);
 }
@@ -1074,7 +1093,8 @@ void SendChannelMessage(const GameConnection_ptr &connection, const std::string&
 void SendIcons(const GameConnection_ptr &connection, uint32_t icons){
     NetworkMessage msg;
     msg.addByte(0xA2);
-    msg.add<uint32_t>(icons);
+    msg.add<uint64_t>(icons);
+    msg.addByte(0x00); // ?
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -1115,6 +1135,12 @@ void SendContainer(const GameConnection_ptr &connection, uint8_t cid,
     } else {
         msg.addByte(0x00);
     }
+
+    msg.addByte(0x00); // container category ?
+    msg.addByte(0x00); // ?
+    msg.addByte(0x00); // movable ?
+    msg.addByte(0x00); // player held?
+
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -1710,38 +1736,47 @@ void SendSkills(const GameConnection_ptr &connection){
 
     NetworkMessage msg;
     msg.addByte(0xA1);
+
     msg.add<uint16_t>(player->getMagicLevel());
     msg.add<uint16_t>(player->getBaseMagicLevel());
     msg.add<uint16_t>(player->getBaseMagicLevel()); // base + loyalty bonus(?)
     msg.add<uint16_t>(player->getMagicLevelPercent());
 
     for (uint8_t i = SKILL_FIRST; i <= SKILL_LAST; ++i) {
-        msg.add<uint16_t>(std::min<int32_t>(player->getSkillLevel(i), std::numeric_limits<uint16_t>::max()));
+        msg.add<uint16_t>(player->getSkillLevel(i));
         msg.add<uint16_t>(player->getBaseSkill(i));
         msg.add<uint16_t>(player->getBaseSkill(i)); // base + loyalty bonus(?)
         msg.add<uint16_t>(player->getSkillPercent(i));
     }
 
-    for (uint8_t i = SPECIALSKILL_FIRST; i <= SPECIALSKILL_LAST; ++i) {
-        msg.add<uint16_t>(player->getSpecialSkill(i));  // base + bonus special skill
-        msg.add<uint16_t>(0);                           // base special skill
-    }
+    msg.addByte(0x00);      // ?
 
-    msg.addByte(0); // element magic level
-    // structure:
-    // u8 client element id
-    // u16 bonus element ml
+    uint32_t totalCapacity = player->hasFlag(PlayerFlag_HasInfiniteCapacity) ? 1000000 : player->getCapacity();
+    msg.add<uint32_t>(totalCapacity);
+    msg.add<uint32_t>(totalCapacity);
 
-    // fatal, dodge, momentum
-    for (int i = 0; i < 3; ++i) {
-        msg.add<uint16_t>(0);
-        msg.add<uint16_t>(0);
-    }
+    msg.add<uint16_t>(1);   // damage/healing
+    msg.add<uint16_t>(2);   // attack value
+    msg.addByte(3);         // damage type
+    msg.addDouble(4.0, 4);  // converted damage percent
+    msg.addByte(5);         // converted damage type
 
-    // to do: bonus cap
-    uint32_t capacityValue = player->hasFlag(PlayerFlag_HasInfiniteCapacity) ? 1000000 : player->getCapacity();
-    msg.add<uint32_t>(capacityValue); // base + bonus capacity
-    msg.add<uint32_t>(capacityValue); // base capacity
+    msg.addDouble(6.0, 4);  // life leech percent
+    msg.addDouble(7.0, 4);  // mana leech percent
+    msg.addDouble(8.0, 4);  // crit chance percent
+    msg.addDouble(9.0, 4);  // crit damage percent
+    msg.addDouble(10.0, 4); // onslaught percent
+    msg.add<uint16_t>(11);  // defence
+    msg.add<uint16_t>(12);  // armor
+    msg.add<uint16_t>(13);  // mantra
+    msg.addDouble(14.0, 4); // mitigation percent
+    msg.addDouble(15.0, 4); // dodge
+    msg.add<uint16_t>(16);  // damage reflection
+    msg.addByte(0);         // element protection count (followed by list)
+    msg.addDouble(19.0, 4); // momentum
+    msg.addDouble(20.0, 4); // transcendence
+    msg.addDouble(21.0, 4); // amplification
+
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -1762,9 +1797,10 @@ void SendDistanceShoot(const GameConnection_ptr &connection, const Position& fro
     msg.addByte(0x83);
     msg.addPosition(from);
     msg.addByte(MAGIC_EFFECTS_CREATE_DISTANCEEFFECT);
-    msg.addByte(type);
+    msg.add<uint16_t>(type);
     msg.addByte(static_cast<uint8_t>(static_cast<int8_t>(static_cast<int32_t>(to.x) - static_cast<int32_t>(from.x))));
     msg.addByte(static_cast<uint8_t>(static_cast<int8_t>(static_cast<int32_t>(to.y) - static_cast<int32_t>(from.y))));
+    msg.addByte(0x00); // source for opacity configuration ?
     msg.addByte(MAGIC_EFFECTS_END_LOOP);
     WriteToOutputBuffer(connection, msg);
 }
@@ -1778,7 +1814,8 @@ void SendMagicEffect(const GameConnection_ptr &connection, const Position& pos, 
     msg.addByte(0x83);
     msg.addPosition(pos);
     msg.addByte(MAGIC_EFFECTS_CREATE_EFFECT);
-    msg.addByte(type);
+    msg.add<uint16_t>(type);
+    msg.addByte(0x00); // source for opacity configuration ?
     msg.addByte(MAGIC_EFFECTS_END_LOOP);
     WriteToOutputBuffer(connection, msg);
 }
@@ -1927,9 +1964,23 @@ void SendPendingStateEntered(const GameConnection_ptr &connection){
     WriteToOutputBuffer(connection, msg);
 }
 
+void SendUnk0B(const GameConnection_ptr &connection, std::string_view str){
+    NetworkMessage msg;
+    msg.addByte(0x0B);
+    msg.addString(str);
+    WriteToOutputBuffer(connection, msg);
+}
+
 void SendEnterWorld(const GameConnection_ptr &connection){
     NetworkMessage msg;
     msg.addByte(0x0F);
+    WriteToOutputBuffer(connection, msg);
+}
+
+void SendAllowBugReports(const GameConnection_ptr &connection, bool allow){
+    NetworkMessage msg;
+    msg.addByte(0x1A);
+    msg.addByte(allow ? 0x01 : 0x00);
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -2091,20 +2142,11 @@ void SendItems(const GameConnection_ptr &connection){
     // find all items carried by character (itemId, amount)
     std::map<uint32_t, uint32_t> inventory;
     connection->player->getAllItemTypeCount(inventory);
-
-    msg.add<uint16_t>(inventory.size() + 11);
-    for (uint16_t i = 1; i <= 11; i++) {
-        msg.add<uint16_t>(i); // slotId
-        msg.addByte(0);       // always 0
-        msg.add<uint16_t>(1); // always 1
-    }
-
     for (const auto& item : inventory) {
         msg.add<uint16_t>(Item::items[item.first].clientId); // item clientId
-        msg.addByte(0);                                      // always 0
-        msg.add<uint16_t>(item.second);                      // count
+        msg.addByte(0);                                      // always 0 ?
+        msg.addByte(item.second);                            // count ?
     }
-
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -3388,6 +3430,11 @@ static void PerformLogin(GameConnection_ptr connection, bool isGamemaster,
 
     (void)isGamemaster;
 
+    // NOTE(fusion): Make sure the connection didn't timeout.
+    if(CurrentState(connection) != GAME_CONNECTION_LOGIN){
+        return;
+    }
+
     if(sessionToken.empty() || characterName.empty()){
         SendLoginError(connection, "Malformed session data.");
         return;
@@ -3584,6 +3631,7 @@ static void Close(const GameConnection_ptr &connection){
             [connection] mutable {
                 Detach(std::move(connection));
             });
+        ForceTransition(connection, GAME_CONNECTION_DONE);
     }
 }
 
@@ -3595,12 +3643,12 @@ static void Abort(const GameConnection_ptr &connection){
             [connection] mutable {
                 Detach(std::move(connection));
             });
+        ForceTransition(connection, GAME_CONNECTION_DONE);
     }
 }
 
 static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection,
-                                            NetworkMessage &input,
-                                            bool encryptionEnabled = true){
+                                            NetworkMessage &input){
     co_await asio::async_read(connection->socket,
             asio::buffer(input.buffer, 2), use_awaitable);
     int numXteaBlocks = ((uint16_t)input.buffer[0]) | ((uint16_t)input.buffer[1] << 8);
@@ -3622,7 +3670,7 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
         co_return false;
     }
 
-    if(encryptionEnabled){
+    if(connection->xteaKeyInitialized){
         if(!XteaDecrypt(connection->xteaKey,
                 input.getRemainingBuffer(),
                 input.getRemainingLength())){
@@ -3637,14 +3685,89 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
 
     // TODO(fusion): Maybe inflate? Check sequence high bits.
 
+    PrintBuffer("INPUT", input.getRemainingBuffer(), input.getRemainingLength());
+
     connection->clientSequence += 1;
     co_return true;
 }
 
+static bool CompressOutput(const GameConnection_ptr &connection,
+                           const OutputMessage_ptr &output){
+    uint8_t *outputBuffer = output->getOutputBuffer();
+    int uncompressedSize = output->getOutputLength();
+    if(uncompressedSize <= 0){
+        std::cout << "Trying to compress empty output..." << std::endl;
+        return false;
+    }
+
+    if(!connection->deflateStreamInitialized){
+        int ret = deflateInit2(&connection->deflateStream, Z_DEFAULT_COMPRESSION,
+                               Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
+        if(ret != Z_OK){
+            const char *msg = connection->deflateStream.msg;
+            std::cout << "Failed to initialize deflate stream: (" << ret << ") "
+                << (msg ? msg : "no message") << std::endl;
+            return false;
+        }
+        connection->deflateStreamInitialized = true;
+    }
+
+    std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
+    z_stream *strm = &connection->deflateStream;
+    strm->next_in = outputBuffer;
+    strm->avail_in = uncompressedSize;
+    strm->next_out = buffer.data();
+    strm->avail_out = buffer.size();
+
+    int ret = deflate(strm, Z_SYNC_FLUSH);
+    if(ret != Z_OK || strm->avail_out == 0){
+        std::cout << "Failed to compress output: (" << ret << ") "
+                << (strm->msg ? strm->msg : "no message") << std::endl;
+        return false;
+    }
+
+    // NOTE(fusion): The Z_SYNC_FLUSH mode will always add this "\x00\x00\xFF\xFF"
+    // sequence at the end to make the output byte aligned. If it's not there, then
+    // something wrong happened with compression.
+    int compressedSize = (buffer.size() - strm->avail_out);
+    if(compressedSize >= 4
+            && buffer[compressedSize - 4] == 0x00
+            && buffer[compressedSize - 3] == 0x00
+            && buffer[compressedSize - 2] == 0xFF
+            && buffer[compressedSize - 1] == 0xFF){
+        compressedSize -= 4;
+    }else{
+        std::cout << "Compressed data is missing empty stored block at the end" << std::endl;
+        return false;
+    }
+
+    // NOTE(fusion): It is very unlikely but compressed data may end up being
+    // larger if the uncompressed data has a lot of entropy (e.g. random or
+    // already compressed data). That said, this is now a persistent deflate
+    // stream, which means we cannot discard any compressed data because that
+    // would cause `inflate` to fail client-side due to deflate window bytes
+    // being different.
+    int sizeDifference = compressedSize - uncompressedSize;
+    if(sizeDifference > 0 && !output->canAdd(sizeDifference)){
+        return false;
+    }
+
+    std::memcpy(outputBuffer, buffer.data(), compressedSize);
+    output->wrpos += sizeDifference;
+    return true;
+}
+
 static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connection,
-                                             const OutputMessage_ptr &output,
-                                             bool encryptionEnabled = true){
-    // TODO(fusion): Maybe deflate? Set sequence high bits.
+                                             const OutputMessage_ptr &output){
+    PrintBuffer("OUTPUT", output->getOutputBuffer(), output->getOutputLength());
+
+    // TODO(fusion): Pretty much all packets are compressed, aside from very
+    // specific few like 1C, 1D, 1E. It may be related to packet size but I'm
+    // not entirely sure yet.
+    uint32_t sequence = (connection->serverSequence & 0x3FFFFFFF) | 0xC0000000;
+    if(!CompressOutput(connection, output)){
+        co_return false;
+    }
 
     // TODO(fusion): Probably just compute the amount of padding and call `CryptoRand` once.
     int padding = 0;
@@ -3661,7 +3784,7 @@ static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connectio
         co_return false;
     }
 
-    if(encryptionEnabled){
+    if(connection->xteaKeyInitialized){
         if(!XteaEncrypt(connection->xteaKey,
                 output->getOutputBuffer(),
                 output->getOutputLength())){
@@ -3669,11 +3792,13 @@ static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connectio
         }
     }
 
-    output->addHeader<uint32_t>(connection->serverSequence++);
+    output->addHeader<uint32_t>(sequence);
     output->addHeader<uint16_t>(numXteaBlocks);
     co_await asio::async_write(connection->socket,
             asio::buffer(output->getOutputBuffer(), output->getOutputLength()),
             use_awaitable);
+
+    connection->serverSequence += 1;
     co_return true;
 }
 
@@ -3733,14 +3858,6 @@ static asio::awaitable<void> GameWriter(GameConnection_ptr connection){
     try {
         asio::steady_timer timer(executor);
         while(true){
-            // TODO(fusion): Process CLOSE and ABORT?
-            GameConnectionState state = CurrentState(connection);
-            //switch(){}
-
-            if(state != GAME_CONNECTION_OK && state != GAME_CONNECTION_CLOSE){
-                break;
-            }
-
             OutputMessage_ptr output;
             {
                 std::lock_guard lockGuard(connection->outputMutex);
@@ -3750,10 +3867,26 @@ static asio::awaitable<void> GameWriter(GameConnection_ptr connection){
                 }
             }
 
+            GameConnectionState state = CurrentState(connection);
+            if(state != GAME_CONNECTION_OK){
+                if(state != GAME_CONNECTION_CLOSE){
+                    Abort(connection);
+                    co_return;
+                }else if(!output){
+                    Close(connection);
+                    co_return;
+                }
+            }
+
             if(!output){
                 boost::system::error_code ec;
                 timer.expires_after(AUTO_SEND_INTERVAL);
                 co_await timer.async_wait(asio::redirect_error(use_awaitable, ec));
+                continue;
+            }
+
+            if(output->getOutputLength() <= 0){
+                std::cout << "GameWriter: ignoring empty output message..." << std::endl;
                 continue;
             }
 
@@ -3843,7 +3976,7 @@ static asio::awaitable<void> GameHandshake(GameConnection_ptr connection){
         // SERVER <- CLIENT (LOGIN)
         {
             NetworkMessage input;
-            if(bool ok = co_await ReadGamePacket(connection, input, false); !ok){
+            if(bool ok = co_await ReadGamePacket(connection, input); !ok){
                 Abort(connection);
                 co_return;
             }
@@ -3862,7 +3995,7 @@ static asio::awaitable<void> GameHandshake(GameConnection_ptr connection){
             connection->terminalVersion = input.get<uint16_t>();
             input.get<uint32_t>();  // terminal version 32?
             input.getString();      // version string
-            input.getString();      // hex string => client/assets checksum?
+            input.getString();      // assets.json.sha256
             input.getByte();        // ?
 
             if(!RsaDecrypt(input.getRemainingBuffer(), input.getRemainingLength())
@@ -3875,6 +4008,7 @@ static asio::awaitable<void> GameHandshake(GameConnection_ptr connection){
             connection->xteaKey[1] = input.get<uint32_t>();
             connection->xteaKey[2] = input.get<uint32_t>();
             connection->xteaKey[3] = input.get<uint32_t>();
+            connection->xteaKeyInitialized = true;
 
             bool isGamemaster         = input.getByte();
             std::string sessionToken  = tfs::base64::decode(input.getString());
@@ -3904,10 +4038,10 @@ static asio::awaitable<void> GameHandshake(GameConnection_ptr connection){
         co_await connection->loginTimer.async_wait(
                 asio::redirect_error(use_awaitable, ec));
         if(!ec){
-            //
+            co_return;
         }
 
-        GameConnectionState currentState = connection->state.load(std::memory_order_acquire);
+        GameConnectionState currentState = CurrentState(connection);
         if(currentState == GAME_CONNECTION_LOGIN){
             Abort(connection);
             co_return;

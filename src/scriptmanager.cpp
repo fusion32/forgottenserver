@@ -43,13 +43,13 @@ ScriptingManager::~ScriptingManager()
 bool ScriptingManager::loadScriptSystems()
 {
 	if (g_luaEnvironment.loadFile("data/global.lua") == -1) {
-		std::cout << "[Warning - ScriptingManager::loadScriptSystems] Can not load data/global.lua" << std::endl;
+		LOG_WARN("Can not load data/global.lua");
 	}
 
 	g_scripts = new Scripts();
-	std::cout << ">> Loading lua libs" << std::endl;
+	LOG("Loading lua libs");
 	if (!g_scripts->loadScripts("scripts/lib", true, false)) {
-		std::cout << "> ERROR: Unable to load lua libs!" << std::endl;
+		LOG_ERR("Unable to load lua libs!");
 		return false;
 	}
 
@@ -57,50 +57,49 @@ bool ScriptingManager::loadScriptSystems()
 
 	g_weapons = new Weapons();
 	if (!g_weapons->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load weapons!" << std::endl;
+		LOG_ERR("Unable to load weapons!");
 		return false;
 	}
-
 	g_weapons->loadDefaults();
 
 	g_spells = new Spells();
 	if (!g_spells->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load spells!" << std::endl;
+		LOG_ERR("Unable to load spells!");
 		return false;
 	}
 
 	g_actions = new Actions();
 	if(!g_actions->loadFromXml()){
-		std::cout << "> ERROR: Unable to load actions!" << std::endl;
+		LOG_ERR("Unable to load actions!");
 		return false;
 	}
 
 	g_talkActions = new TalkActions();
 	if (!g_talkActions->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load talk actions!" << std::endl;
+		LOG_ERR("Unable to load talk actions!");
 		return false;
 	}
 
 	g_moveEvents = new MoveEvents();
 	if (!g_moveEvents->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load move events!" << std::endl;
+		LOG_ERR("Unable to load move events!");
 		return false;
 	}
 
 	g_creatureEvents = new CreatureEvents();
 	if (!g_creatureEvents->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load creature events!" << std::endl;
+		LOG_ERR("Unable to load creature events!");
 		return false;
 	}
 
 	g_globalEvents = new GlobalEvents();
 	if (!g_globalEvents->loadFromXml()) {
-		std::cout << "> ERROR: Unable to load global events!" << std::endl;
+		LOG_ERR("Unable to load global events!");
 		return false;
 	}
 
 	if (!tfs::events::load()) {
-		std::cout << "> ERROR: Unable to load events!" << std::endl;
+		LOG_ERR("Unable to load events!");
 		return false;
 	}
 

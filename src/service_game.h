@@ -49,7 +49,7 @@ void SendAddMarker(const GameConnection_ptr &connection, const Position& pos,
 void SendReLoginWindow(const GameConnection_ptr &connection, uint8_t unfairFightReduction);
 void SendStats(const GameConnection_ptr &connection);
 void SendExperienceTracker(const GameConnection_ptr &connection, int64_t rawExp, int64_t finalExp);
-void SendClientFeatures(const GameConnection_ptr &connection);
+void SendServerConfig(const GameConnection_ptr &connection);
 void SendBasicData(const GameConnection_ptr &connection);
 void SendTextMessage(const GameConnection_ptr &connection, const TextMessage& message);
 void SendClosePrivate(const GameConnection_ptr &connection, uint16_t channelId);
@@ -115,7 +115,9 @@ void SendRemoveTileCreature(const GameConnection_ptr &connection, const Creature
 void SendUpdateTile(const GameConnection_ptr &connection, const Tile* tile, const Position& pos);
 void SendUpdateCreatureIcons(const GameConnection_ptr &connection, const Creature* creature);
 void SendPendingStateEntered(const GameConnection_ptr &connection);
+void SendUnk0B(const GameConnection_ptr &connection, std::string_view str);
 void SendEnterWorld(const GameConnection_ptr &connection);
+void SendAllowBugReports(const GameConnection_ptr &connection, bool allow);
 void SendFightModes(const GameConnection_ptr &connection);
 void SendAddCreature(const GameConnection_ptr &connection, const Creature* creature,
                      const Position& pos, int32_t stackpos, MagicEffectClasses magicEffect = CONST_ME_NONE);

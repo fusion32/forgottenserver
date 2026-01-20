@@ -1082,11 +1082,13 @@ void Player::openSavedContainers()
 		}
 	}
 
+#if 0
 	// fix broken containers when logged in from another location
 	for(int cid = 0; cid < PLAYER_MAX_OPEN_CONTAINERS; cid += 1){
 		SendEmptyContainer(connection, cid);
 		SendCloseContainer(connection, cid);
 	}
+#endif
 
 	// send actual containers
 	for (const auto &it: openList) {
@@ -1136,6 +1138,34 @@ void Player::onCreatureAppear(Creature* creature, bool isLogin, MagicEffectClass
 
 	setLastPosition(getPosition());
 
+	// NOTE(fusion): This is the exact order of things going in the first packet.
+	if(connection){
+		SendServerConfig(connection);
+
+		// TODO(fusion): There is probably a better name here? I noticed this is
+		// used for signaling the client that it should be ready to enter world.
+		// So we basically send 0A to the client and wait for a 0F, and only then,
+		// send a 0F ourselves followed by world data, character data, etc... If
+		// we don't send the 0A, the client doesn't seem to send a 0F which also
+		// doens't make a difference since it will simply enter world.
+		//SendPendingStateEntered(connection);
+
+		// sendPreyData();
+		// sendResources();
+		// sendDailyRewards();
+		// sendCyclopediaMonsters(); ?
+		// sendForgeData();
+
+		SendAllowBugReports(connection, false);
+
+		// TODO(fusion): Some UUID, which seems to always be included at the end
+		// of the first packet.
+		SendUnk0B(connection, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+	}
+
+	// TODO(fusion): Have something to force a separate packet here?
+	(void)isLogin;
+/*
 	if (isLogin) {
 		// Restore conditions stored during previous logout
 		for (Condition* condition : storedConditionList) {
@@ -1197,31 +1227,34 @@ void Player::onCreatureAppear(Creature* creature, bool isLogin, MagicEffectClass
 			return;
 		}
 	}
+*/
 
-	sendStats();
-	sendSkills();
-	sendIcons();
-	sendLight();
-	sendVIPEntries();
-	sendItemClasses();
-	sendClientFeatures();
-	sendBasicData();
-	sendItems();
-	sendPendingStateEntered();
 	sendEnterWorld();
 	sendMapDescription();
 
 	for (int i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; ++i) {
-		auto slot = static_cast<slots_t>(i);
-		sendInventoryItem(slot, getInventoryItem(slot));
+		sendInventoryItem((slots_t)i, getInventoryItem((slots_t)i));
 	}
+
 	sendInventoryItem(CONST_SLOT_STORE_INBOX, getStoreInbox()->getItem());
+
+	sendStats();
+	sendSkills();
+
+/*
+	sendIcons();
+	sendLight();
+	sendVIPEntries();
+	//sendItemClasses();
+	//sendBasicData();
+	sendItems();
 
 	openSavedContainers();
 
 	if (magicEffect != CONST_ME_NONE) {
 		sendMagicEffect(magicEffect);
 	}
+*/
 }
 
 void Player::onAttackedCreatureDisappear(bool isLogout)

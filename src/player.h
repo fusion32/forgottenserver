@@ -825,22 +825,10 @@ public:
 			SendItemClasses(connection);
 		}
 	}
-	void sendClientFeatures() const
-	{
-		if (connection) {
-			SendClientFeatures(connection);
-		}
-	}
 	void sendMapDescription() const
 	{
 		if (connection) {
 			SendMapDescription(connection, position);
-		}
-	}
-	void sendPendingStateEntered() const
-	{
-		if (connection) {
-			SendPendingStateEntered(connection);
 		}
 	}
 	void sendCancelMessage(const std::string& msg) const

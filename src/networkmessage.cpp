@@ -71,7 +71,7 @@ void NetworkMessage::addBytes(const uint8_t* bytes, int size)
 	wrpos += size;
 }
 
-void NetworkMessage::addDouble(double value, uint8_t precision /* = 2*/)
+void NetworkMessage::addDouble(double value, uint8_t precision)
 {
 	addByte(precision);
 	add<uint32_t>(value * std::pow(10.0f, precision) + INT32_MAX);
@@ -131,14 +131,12 @@ void NetworkMessage::addItem(const Item* item)
 	}
 
 	if (it.isContainer()) {
-		addByte(0x00); // assigned loot container icon
-		// quiver ammo count
+		addByte(0x00);
 		const Container* container = item->getContainer();
 		if (container && it.weaponType == WEAPON_QUIVER) {
-			addByte(0x01);
+			add<uint32_t>(0); // ?
 			add<uint32_t>(container->getAmmoCount());
-		} else {
-			addByte(0x00);
+			add<uint32_t>(0); // ?
 		}
 	}
 
@@ -184,16 +182,6 @@ void NetworkMessage::addItemId(uint16_t itemId) {
 }
 
 void NetworkMessage::dump(std::string_view name) const {
-	int len = getWrittenLength();
-	fmt::print("NetworkMessage ({}, rdpos={}, len={}):", name, rdpos, len);
-	for(int i = 0; i < len; i += 1){
-		if(i % 16 == 0){
-			fmt::print("\n");
-		}else{
-			fmt::print(" ");
-		}
-		fmt::print("{:02X}", buffer[i]);
-	}
-	fmt::print("\n");
+	PrintBuffer(name, buffer.data(), getWrittenLength());
 }
 

@@ -7,6 +7,7 @@ set(tfs_SRC
 	${CMAKE_CURRENT_LIST_DIR}/bed.cpp
 	${CMAKE_CURRENT_LIST_DIR}/chat.cpp
 	${CMAKE_CURRENT_LIST_DIR}/combat.cpp
+	${CMAKE_CURRENT_LIST_DIR}/common.cpp
 	${CMAKE_CURRENT_LIST_DIR}/condition.cpp
 	${CMAKE_CURRENT_LIST_DIR}/configmanager.cpp
 	${CMAKE_CURRENT_LIST_DIR}/container.cpp
@@ -79,6 +80,7 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/bed.h
 	${CMAKE_CURRENT_LIST_DIR}/chat.h
 	${CMAKE_CURRENT_LIST_DIR}/combat.h
+	${CMAKE_CURRENT_LIST_DIR}/common.h
 	${CMAKE_CURRENT_LIST_DIR}/condition.h
 	${CMAKE_CURRENT_LIST_DIR}/configmanager.h
 	${CMAKE_CURRENT_LIST_DIR}/const.h
@@ -89,7 +91,6 @@ set(tfs_HDR
 	${CMAKE_CURRENT_LIST_DIR}/database.h
 	${CMAKE_CURRENT_LIST_DIR}/databasemanager.h
 	${CMAKE_CURRENT_LIST_DIR}/databasetasks.h
-	${CMAKE_CURRENT_LIST_DIR}/definitions.h
 	${CMAKE_CURRENT_LIST_DIR}/depotchest.h
 	${CMAKE_CURRENT_LIST_DIR}/depotlocker.h
 	${CMAKE_CURRENT_LIST_DIR}/enums.h

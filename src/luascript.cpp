@@ -6213,7 +6213,7 @@ int LuaScriptInterface::luaNetworkMessageAddDouble(lua_State* L)
 	double number = tfs::lua::getNumber<double>(L, 2);
 	NetworkMessage* message = tfs::lua::getUserdata<NetworkMessage>(L, 1);
 	if (message) {
-		message->addDouble(number);
+		message->addDouble(number, 3);
 		tfs::lua::pushBoolean(L, true);
 	} else {
 		lua_pushnil(L);

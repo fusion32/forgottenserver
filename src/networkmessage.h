@@ -142,7 +142,7 @@ public:
 	std::string getString(int stringLen = 0);
 	void addString(std::string_view value);
 	void addBytes(const uint8_t* bytes, int size);
-	void addDouble(double value, uint8_t precision = 2);
+	void addDouble(double value, uint8_t precision);
 	void addItem(uint16_t id, uint8_t count);
 	void addItem(const Item* item);
 	void addItemId(uint16_t itemId);

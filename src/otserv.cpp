@@ -25,16 +25,6 @@
 #include "gitmetadata.h"
 #endif
 
-#if defined(__amd64__) || defined(_M_X64)
-#	define BUILD_ARCH "x64"
-#elif defined(__i386__) || defined(_M_IX86) || defined(_X86_)
-#	define BUILD_ARCH "x86"
-#elif defined(__arm__)
-#	define BUILD_ARCH "ARM";
-#else
-#	define BUILD_ARCH "unknown"
-#endif
-
 namespace asio = boost::asio;
 namespace chrono = std::chrono;
 static boost::asio::io_context g_ioContext(1);
@@ -48,12 +38,6 @@ Monsters g_monsters;
 Vocations g_vocations;
 extern Scripts* g_scripts;
 
-template<typename ...Args>
-void PrintError(fmt::format_string<Args...> fmt, Args &&...args){
-	fmt::print(fg(fmt::color::crimson) | fmt::emphasis::bold,
-			fmt, std::forward<Args>(args)...);
-}
-
 void ServerStop(void){
 	g_ioContext.stop();
 }
@@ -63,7 +47,7 @@ int main(int argc, const char **argv){
 	(void)argv;
 
 	std::set_new_handler([]{
-			puts("OUT OF MEMORY");
+			LOG_ERR("OUT OF MEMORY");
 			std::terminate();
 		});
 
@@ -76,12 +60,11 @@ int main(int argc, const char **argv){
 
 #ifndef _WIN32
 	if (getuid() == 0 || geteuid() == 0) {
-		PrintError("Running the server as root is unsafe and may compromise the"
+		LOG_ERR("Running the server as root is unsafe and may compromise the"
 				" whole system in case of unknown vunerabilities. Please setup"
-				" and use a regular user instead.\n");
+				" and use a regular user instead.");
 		return EXIT_FAILURE;
 	}
-
 #else
 	SetConsoleTitle(STATUS_SERVER_NAME);
 
@@ -120,138 +103,131 @@ int main(int argc, const char **argv){
 	srand(static_cast<unsigned int>(OTSYS_TIME()));
 
 #if GIT_RETRIEVED_STATE
-	fmt::print("{} - Version {}\n", STATUS_SERVER_NAME, GIT_DESCRIBE);
-	fmt::print("Git SHA1 {} dated {}\n", GIT_SHORT_SHA1, GIT_COMMIT_DATE_ISO8601);
+	LOG("{} - Version {}", STATUS_SERVER_NAME, GIT_DESCRIBE);
+	LOG("Git SHA1 {} dated {}", GIT_SHORT_SHA1, GIT_COMMIT_DATE_ISO8601);
 #if GIT_IS_DIRTY
-	fmt::print("*** DIRTY - NOT OFFICIAL RELEASE ***\n");
+	LOG("*** DIRTY - NOT OFFICIAL RELEASE ***");
 #endif
 #else
-	fmt::print("{} - Version {}\n", STATUS_SERVER_NAME, STATUS_SERVER_VERSION);
+	LOG("{} - Version {}", STATUS_SERVER_NAME, STATUS_SERVER_VERSION);
 #endif
 
-	fmt::print("Compiled with {} ({}) on {} {}\n", BOOST_COMPILER, BUILD_ARCH, __DATE__, __TIME__);
+	LOG("Compiled with {} ({}) on {} {}", BOOST_COMPILER, ARCH_NAME, __DATE__, __TIME__);
 
 #if defined(LUAJIT_VERSION)
-	fmt::print("Linked with {}\n", LUAJIT_VERSION);
+	LOG("Linked with {}", LUAJIT_VERSION);
 #else
-	fmt::print("Linked with {}\n", LUA_RELEASE);
+	LOG("Linked with {}", LUA_RELEASE);
 #endif
 
-	fmt::print("\n");
-	fmt::print("A server developed by {}\n", STATUS_SERVER_DEVELOPERS);
-	fmt::print("Visit our forum for updates, support, and resources: https://otland.net/.\n");
-	fmt::print("\n");
-
+	LOG("A server developed by {}", STATUS_SERVER_DEVELOPERS);
+	LOG("Visit our forum for updates, support, and resources: https://otland.net/.");
 
 	g_game.setGameState(GAME_STATE_STARTUP);
 
-	fmt::print(">> Loading config\n");
+	LOG("Loading config");
 	if (!ConfigManager::load()) {
-		PrintError("Unable to load {}!\n", getString(ConfigManager::CONFIG_FILE));
+		LOG_ERR("Unable to load {}!", getString(ConfigManager::CONFIG_FILE));
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading rsa private key\n");
+	LOG("Loading rsa private key");
 	if(!RsaLoadPrivateKey()){
-		PrintError("Failed to load rsa private key\n");
+		LOG_ERR("Failed to load rsa private key");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Establishing database connection...");
+	LOG("Establishing database connection...");
 	if (!Database::getInstance().connect()) {
-		PrintError("Failed to connect to database.\n");
+		LOG_ERR("Failed to connect to database.");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(" MySQL {}\n", Database::getClientVersion());
-	fmt::print(">> Running database manager\n");
+	LOG("MySQL: {}", Database::getClientVersion());
+	LOG("Running database manager");
 	if (!DatabaseManager::isDatabaseSetup()) {
-		PrintError("The database you have specified in config.lua is empty,"
-				" please import the schema.sql to your database.\n");
+		LOG_ERR("The database you have specified in config.lua is empty,"
+				" please import the schema.sql to your database.");
 		return EXIT_FAILURE;
 	}
 
 	DatabaseManager::updateDatabase();
 	if (getBoolean(ConfigManager::OPTIMIZE_DATABASE) && !DatabaseManager::optimizeTables()) {
-		fmt::print("> No tables were optimized.\n");
+		LOG("No tables were optimized.");
 	}
 
-	fmt::print(">> Loading vocations\n");
+	LOG("Loading vocations");
 	if (!g_vocations.loadFromXml()) {
-		PrintError("Unable to load vocations!\n");
+		LOG_ERR("Unable to load vocations!");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading items...");
+	LOG("Loading items...");
 	if (!Item::items.loadFromOtb()) {
-		fmt::print("\n");
-		PrintError("Unable to load items (OTB)!\n");
+		LOG_ERR("Unable to load items (OTB)!");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(" OTB v{:d}.{:d}.{:d}\n",
+	LOG("OTB v{:d}.{:d}.{:d}",
 			Item::items.majorVersion,
 			Item::items.minorVersion,
 			Item::items.buildNumber);
 
 	if (!Item::items.loadFromXml()) {
-		PrintError("Unable to load items (XML)!\n");
+		LOG_ERR("Unable to load items (XML)!");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading script systems\n");
+	LOG("Loading script systems");
 	if (!ScriptingManager::getInstance().loadScriptSystems()) {
-		PrintError("Failed to load script systems\n");
+		LOG_ERR("Failed to load script systems");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading lua scripts\n");
+	LOG("Loading lua scripts");
 	if (!g_scripts->loadScripts("scripts", false, false)) {
-		PrintError("Failed to load lua scripts\n");
+		LOG_ERR("Failed to load lua scripts");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading monsters\n");
+	LOG("Loading monsters");
 	if (!g_monsters.loadFromXml()) {
-		PrintError("Unable to load monsters!\n");
+		LOG_ERR("Unable to load monsters!");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading lua monsters\n");
+	LOG("Loading lua monsters");
 	if (!g_scripts->loadScripts("monster", false, false)) {
-		PrintError("Failed to load lua monsters\n");
+		LOG_ERR("Failed to load lua monsters");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Loading outfits\n");
+	LOG("Loading outfits");
 	if (!Outfits::getInstance().loadFromXml()) {
-		PrintError("Unable to load outfits!\n");
+		LOG_ERR("Unable to load outfits!");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Checking world type...");
-	std::string worldType = boost::algorithm::to_lower_copy(getString(ConfigManager::WORLD_TYPE));
-	if (worldType == "pvp") {
+	std::string worldType = boost::algorithm::to_upper_copy(getString(ConfigManager::WORLD_TYPE));
+	LOG("Checking world type... {}", worldType);
+	if (worldType == "PVP") {
 		g_game.setWorldType(WORLD_TYPE_PVP);
-	} else if (worldType == "no-pvp") {
+	} else if (worldType == "NO-PVP") {
 		g_game.setWorldType(WORLD_TYPE_NO_PVP);
-	} else if (worldType == "pvp-enforced") {
+	} else if (worldType == "PVP-ENFORCED") {
 		g_game.setWorldType(WORLD_TYPE_PVP_ENFORCED);
 	} else {
-		fmt::print("\n");
-		PrintError("Unknown world type {}, valid world types are: pvp, no-pvp and pvp-enforced.\n",
-				getString(ConfigManager::WORLD_TYPE));
+		LOG_ERR("Unknown world type {}, valid world types are: pvp, no-pvp and pvp-enforced.", worldType);
 		return EXIT_FAILURE;
 	}
-	fmt::print(" {}\n", boost::algorithm::to_upper_copy(worldType));
 
-	fmt::print(">> Loading map\n");
+	LOG("Loading map");
 	if (!g_game.loadMainMap(getString(ConfigManager::MAP_NAME))) {
-		PrintError("Failed to load map\n");
+		LOG_ERR("Failed to load map");
 		return EXIT_FAILURE;
 	}
 
-	fmt::print(">> Initializing gamestate\n");
+	LOG("Initializing gamestate");
 	g_game.setGameState(GAME_STATE_INIT);
 
 	RentPeriod_t rentPeriod;
@@ -272,7 +248,7 @@ int main(int argc, const char **argv){
 	tfs::iomarket::checkExpiredOffers();
 	tfs::iomarket::updateStatistics();
 
-	fmt::print(">> Loaded all modules, server starting up...\n");
+	LOG("Loaded all modules, server starting up...");
 	g_game.setGameState(GAME_STATE_NORMAL);
 
 	// TODO(fusion): Simplify threads?
@@ -289,11 +265,20 @@ int main(int argc, const char **argv){
 	// SERVICE BIND ADDRESS
 	// IMPORTANT(fusion): Using an IPv6 address here will cause the services to listen
 	// to both IPv4 and IPv6. This is not usually a problem, but it depends on how the
-	// game address is resolved by the client, which will depend on DNS settings or the
-	// address format.
-	//  If you use something like "[::1]" it'll properly be resolved by the client as
-	// an IPv6 address, but if you use "::1" it'll fail to connect. If instead you use
-	// use "127.0.0.1" it'll will resolve as an IPv4, etc...
+	// world address is resolved by the client, which will depend on DNS settings and
+	// the address format. If it resolves an IPv6 address, it'll connect with IPv6 but
+	// if it resolves an IPv4 address, it will connect as IPv4.
+	//  Now, game sessions are tied to specific remote addresses so it would be a problem
+	// if the HTTP service records an IPv6 address within a session, but the game received
+	// IPv4 connections, etc... Which is why defaulting to an IPv4 address may be a better
+	// solution overall.
+	//  And there is yet another detail. The client will put the world address directly
+	// into an URL, but IPv6 addresses need to be enclosed in brackets to be properly
+	// parsed there. If we sent "::1", it would try to connect to "tcp://::1:7171" which
+	// is invalid. The better approach would be to always send a hostname instead but in
+	// case there is only an IPv6 address, we'd need to make sure we add those brackets
+	// to get a "tcp://[::1]:7171" result.
+	// TODO(fusion): We might also want to resolve it, if it's a hostname.
 	asio::ip::address bindAddress = asio::ip::make_address(getString(ConfigManager::IP));
 	if(!getBoolean(ConfigManager::BIND_ONLY_GLOBAL_ADDRESS)){
 		if(bindAddress.is_v4()){
@@ -327,16 +312,14 @@ int main(int argc, const char **argv){
 	}
 #endif
 
-	fmt::print(">> {} Online!\n", getString(ConfigManager::SERVER_NAME));
-	fflush(stdout);
-
+	LOG("{} Online!", getString(ConfigManager::SERVER_NAME));
 	try{
 		g_ioContext.run();
 	}catch(const std::exception &e){
-		PrintError("Server error: {}\n", e.what());
+		LOG_ERR("Server error: {}", e.what());
 	}
 
-	fmt::print(">> Shutting down...\n");
+	LOG("Shutting down...");
 
 	g_scheduler.shutdown();
 	g_databaseTasks.shutdown();

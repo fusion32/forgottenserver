@@ -653,6 +653,21 @@ func IsLoginRequest(input []byte) bool {
 	return tmp.Type == "login"
 }
 
+func IsErrorResponse(input []byte) bool {
+	var tmp struct {
+		ErrorCode    int    `json:"errorCode"`
+		ErrorMessage string `json:"errorMessage"`
+	}
+
+	err := json.Unmarshal(input, &tmp)
+	if err != nil {
+		log.Printf("failed to parse response data: %v", err)
+		return false
+	}
+
+	return tmp.ErrorCode != 0 && tmp.ErrorMessage != ""
+}
+
 func SaveAndRewriteWorldEndpoints(input []byte) (output []byte, err error) {
 	var res LoginResponse
 	if err = json.Unmarshal(input, &res); err != nil {
@@ -717,7 +732,7 @@ func HttpRequestHandler(w http.ResponseWriter, req *http.Request) {
 		log.Printf("HTTP REQUEST:  (%v) [[%v]]", requestId, string(decodedInput))
 		log.Printf("HTTP RESPONSE: (%v) [[%v]]", requestId, string(decodedOutput))
 
-		if IsLoginRequest(decodedInput) {
+		if IsLoginRequest(decodedInput) && !IsErrorResponse(decodedOutput) {
 			decodedOutput, err = SaveAndRewriteWorldEndpoints(decodedOutput)
 			if err != nil {
 				log.Printf("failed to save and rewrite world endpoints: %v", err)

@@ -14,7 +14,7 @@ static std::mutex	g_RsaPrivateKeyMutex;
 static RSA			*g_RsaPrivateKey = NULL;
 
 static void DumpOpenSSLErrors(std::string_view where, std::string_view what){
-	fmt::print("OpenSSL error(s) while executing {} at {}:\n", what, where);
+	LOG_ERR("OpenSSL error(s) while executing {} at {}:\n", what, where);
 	ERR_print_errors_cb(
 		[](const char *str, size_t len, void *u) -> int {
 			(void)u;
@@ -25,7 +25,7 @@ static void DumpOpenSSLErrors(std::string_view where, std::string_view what){
 				sv.remove_suffix(1);
 			}
 
-			fmt::print(" - {}\n", sv);
+			LOG_ERR(" - {}", sv);
 			return 1;
 		}, NULL);
 }
@@ -35,7 +35,7 @@ bool RsaLoadPrivateKey(void){
 
 	BIO *bio = BIO_new_file("key.pem", "rb");
 	if(!bio){
-		fmt::print("RsaLoadPrivateKey: failed to open file \"key.pem\" for reading\n");
+		LOG_ERR("failed to open file \"key.pem\" for reading");
 		return false;
 	}
 
@@ -54,7 +54,7 @@ bool RsaDecrypt(uint8_t *data, int len){
 	std::lock_guard lockGuard(g_RsaPrivateKeyMutex);
 
 	if(len != RSA_size(g_RsaPrivateKey)){
-		fmt::print("RsaDecrypt: invalid data length (expected: {}, got: {})",
+		LOG_ERR("invalid data length (expected: {}, got: {})",
 				RSA_size(g_RsaPrivateKey), len);
 		return false;
 	}
@@ -130,6 +130,4 @@ uint8_t CryptoRandByte(void){
 	RAND_bytes(&byte, 1);
 	return byte;
 }
-
-uint8_t CryptoRandByte(void);
 

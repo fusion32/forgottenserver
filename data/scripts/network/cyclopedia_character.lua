@@ -19,8 +19,6 @@ local function sendBasicInfo(self, msg)
 	msg:addByte(1) -- enable store summary & character titles
 	msg:addString("") -- character title
 
-	msg:sendToPlayer(self)
-	msg:delete()
 	return true
 end
 
@@ -72,8 +70,6 @@ local function sendCombatStats(self, msg)
 	-- item clientId
 	-- u16 duration
 
-	msg:sendToPlayer(self)
-	msg:delete()
 	return true
 end
 
@@ -143,8 +139,6 @@ local function sendGeneralStats(self, msg)
 
 	msg:addByte(0) -- magic boost (element and value)
 
-	msg:sendToPlayer(self)
-	msg:delete()
 	return true
 end
 
@@ -168,8 +162,6 @@ local function sendAchievements(self, msg)
 		end
 	end
 
-	msg:sendToPlayer(self)
-	msg:delete()
 	return true
 end
 
@@ -184,8 +176,6 @@ local function sendBadges(self, msg)
 	-- u32 badge id
 	-- string badge name
 
-	msg:sendToPlayer(self)
-	msg:delete()
 	return true
 end
 
@@ -220,21 +210,24 @@ local handlers = {
 		[STORE] = sendStore,
 		[INSPECTION] = sendInspection,
 		[TITLES] = sendTitles
-	]]--
+	--]]
 }
 
 local handler = PacketHandler(0xE5)
 
-function handler.onReceive(player, msg)
-	msg:skipBytes(4)
-	local type = msg:getByte()
+function handler.onReceive(player, input)
+	input:skipBytes(4)
+	local type = input:getByte()
 	local method = handlers[type]
 	if method then
-		local msg = NetworkMessage()
-		msg:addByte(0xDA)
-		msg:addByte(type)
-		msg:addByte(0x00)
-		method(player, msg)
+		local output = NetworkMessage()
+		output:addByte(0xDA)
+		output:addByte(type)
+		output:addByte(0x00)
+		if method(player, output) then
+			output:sendToPlayer(player)
+		end
+		output:delete()
 	end
 end
 
