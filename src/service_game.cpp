@@ -1288,6 +1288,7 @@ void SendSaleItemList(const GameConnection_ptr &connection, const std::list<Shop
 }
 
 void SendResourceBalance(const GameConnection_ptr &connection, const ResourceTypes_t resourceType, uint64_t amount){
+    // TODO(fusion): Some resources (after 0x50 it seems) only use a 32-bit value.
     NetworkMessage msg;
     msg.addByte(0xEE);
     msg.addByte(resourceType);
@@ -1301,10 +1302,9 @@ void SendStoreBalance(const GameConnection_ptr &connection){
     msg.addByte(0x01);
 
     // placeholder packet / to do
-    msg.add<uint32_t>(0); // total store coins (transferable + non-t)
-    msg.add<uint32_t>(0); // transferable store coins
-    msg.add<uint32_t>(0); // reserved auction coins
-    msg.add<uint32_t>(0); // tournament coins
+    msg.add<uint32_t>(0); // total coins ?
+    msg.add<uint32_t>(0); // transferable coins ?
+    msg.add<uint32_t>(0); // reserved coins ?
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -2142,11 +2142,15 @@ void SendItems(const GameConnection_ptr &connection){
     // find all items carried by character (itemId, amount)
     std::map<uint32_t, uint32_t> inventory;
     connection->player->getAllItemTypeCount(inventory);
-    for (const auto& item : inventory) {
+
+    assert(inventory.size() <= UINT16_MAX);
+    msg.add<uint16_t>(inventory.size());
+    for (const auto& item: inventory) {
         msg.add<uint16_t>(Item::items[item.first].clientId); // item clientId
-        msg.addByte(0);                                      // always 0 ?
-        msg.addByte(item.second);                            // count ?
+        msg.addByte(0);             // always 0?
+        msg.addVarInt(item.second); // count
     }
+
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -3145,7 +3149,7 @@ static void ParseMarketBrowse(const GameConnection_ptr &connection, NetworkMessa
         g_game.playerBrowseMarketOwnOffers(connection->player);
     } else if (browseId == MARKETREQUEST_OWN_HISTORY) {
         g_game.playerBrowseMarketOwnHistory(connection->player);
-    } else {
+    } else if (browseId == MARKETREQUEST_ITEM) {
         uint16_t spriteID = input.get<uint16_t>();
         g_game.playerBrowseMarket(connection->player, spriteID);
     }
@@ -3575,6 +3579,7 @@ static void PerformLogin(GameConnection_ptr connection, bool isGamemaster,
         player->onCreatureAppear(player, false, CONST_ME_NONE);
         player->lastIP = player->getIP();
         player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
+        player->receivePing();
         player->resetIdleTime();
         g_creatureEvents->playerReconnect(player);
         ResolveLogin(connection, GAME_CONNECTION_OK);
@@ -3619,22 +3624,16 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
     int numXteaBlocks = ((uint16_t)input.buffer[0]) | ((uint16_t)input.buffer[1] << 8);
     int packetLen = 4 + numXteaBlocks * 8;
     if(numXteaBlocks == 0 || packetLen > (int)input.buffer.size()){
+        LOG_WARN("invalid packet length: {} (nblocks={})", packetLen, numXteaBlocks);
         co_return false;
     }
 
     co_await asio::async_read(connection->socket,
             asio::buffer(input.buffer, packetLen), use_awaitable);
 
-    // TODO(fusion): I think the 2 high bits of the sequence are used for another
-    // purpose. The previous version would set the high bit for compressed packets
-    // but we still need to figure out what's going on with the other bit.
     input.rdpos = 0;
     input.wrpos = packetLen;
     uint32_t sequence = input.get<uint32_t>();
-    if(sequence != connection->clientSequence){
-        co_return false;
-    }
-
     if(connection->xteaKeyInitialized){
         if(!XteaDecrypt(connection->xteaKey,
                 input.getRemainingBuffer(),
@@ -3645,14 +3644,30 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
 
     int padding = input.getByte();
     if(!input.discardPadding(padding)){
+        LOG_WARN("invalid packet padding: {} (remaining len={})",
+                padding, input.getRemainingLength());
         co_return false;
+    }
+
+    // NOTE(fusion): The client will send PONGs with SEQ=0 for whatever reason. If
+    // we don't filter those out, we'll end up dropping the connection by accident,
+    // but accepting every packet with SEQ=0 is probably not a good idea.
+    if((sequence & 0x3FFFFFFF) != (connection->clientSequence & 0x3FFFFFFF)){
+        bool isClientPong = (sequence == 0
+                && input.getRemainingLength() == 1
+                && input.peekByte(0) == 0x1C);
+        if(!isClientPong){
+            LOG_WARN("invalid packet sequence: expected {:X}, got {:X}",
+                    connection->clientSequence, sequence);
+            co_return false;
+        }
+    }else{
+        connection->clientSequence += 1;
     }
 
     // TODO(fusion): Maybe inflate? Check sequence high bits.
 
     PrintBuffer("INPUT", input.getRemainingBuffer(), input.getRemainingLength());
-
-    connection->clientSequence += 1;
     co_return true;
 }
 
@@ -3726,9 +3741,18 @@ static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connectio
                                              const OutputMessage_ptr &output){
     PrintBuffer("OUTPUT", output->getOutputBuffer(), output->getOutputLength());
 
-    // TODO(fusion): Pretty much all packets are compressed, aside from very
-    // specific few like 1C, 1D, 1E. It may be related to packet size but I'm
-    // not entirely sure yet.
+    // TODO(fusion): The 2 high bits are probably used to signal what's the
+    // compression being used. I haven't tested but it'll probably accept the
+    // old compression method if we set only the high bit.
+    //  00 - uncompressed
+    //  10 - per packet compression
+    //  11 - streaming compression
+    //
+    //  Pretty much all packets are compressed, aside from very specific few
+    // like 1C, 1D, 1E so it's probably related to packet type, although it
+    // doesn't seem to make a difference whether we send a compressed ping
+    // packet or not.
+    //
     uint32_t sequence = (connection->serverSequence & 0x3FFFFFFF) | 0xC0000000;
     if(!CompressOutput(connection, output)){
         co_return false;
@@ -3768,7 +3792,7 @@ static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connectio
 }
 
 static asio::awaitable<void> GameReader(GameConnection_ptr connection){
-    constexpr chrono::duration READ_TIMEOUT = chrono::seconds(15);
+    constexpr chrono::duration READ_TIMEOUT = chrono::seconds(30);
     auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor);
     NetworkMessage input;

@@ -19,7 +19,7 @@ public:
 	int wrpos;
 	std::array<uint8_t, NETWORKMESSAGE_MAXSIZE> buffer;
 
-	NetworkMessage(void) {
+	NetworkMessage() {
 		rdpos = 0;
 		wrpos = 0;
 	}
@@ -137,6 +137,8 @@ public:
 		wrpos += sizeof(T);
 	}
 
+	uint32_t getVarInt();
+	void addVarInt(uint32_t value);
 	Position getPosition();
 	void addPosition(const Position& pos);
 	std::string getString(int stringLen = 0);

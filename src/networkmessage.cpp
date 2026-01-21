@@ -10,6 +10,40 @@
 
 #include <boost/locale.hpp>
 
+
+uint32_t NetworkMessage::getVarInt(){
+	// TODO(fusion): Check if this encoding is valid?
+	uint8_t lead = getByte();
+	uint32_t result = (lead & 0x3F);
+	int trailing = ((lead & 0xC0) >> 6);
+	for(int i = 0; i < trailing; i += 1){
+		result = (result << 8) | getByte();
+	}
+	return result;
+}
+
+void NetworkMessage::addVarInt(uint32_t value){
+	// TODO(fusion): Check if this encoding is valid?
+	if(value < 0x40){
+		addByte((uint8_t)(value) | 0x00);
+	}else if(value < 0x4000){
+		addByte((uint8_t)((value >>  8) & 0x3F) | 0x40);
+		addByte((uint8_t)((value >>  0) & 0xFF));
+	}else if(value < 0x400000){
+		addByte((uint8_t)((value >> 16) & 0x3F) | 0x80);
+		addByte((uint8_t)((value >>  8) & 0xFF));
+		addByte((uint8_t)((value >>  0) & 0xFF));
+	}else{
+		if(value >= 0x40000000){
+			LOG_WARN("varint {:X} is too large to be properly encoded", value);
+		}
+		addByte((uint8_t)((value >> 24) & 0x3F) | 0xC0);
+		addByte((uint8_t)((value >> 16) & 0xFF));
+		addByte((uint8_t)((value >>  8) & 0xFF));
+		addByte((uint8_t)((value >>  0) & 0xFF));
+	}
+}
+
 Position NetworkMessage::getPosition()
 {
 	Position pos;
@@ -88,8 +122,7 @@ void NetworkMessage::addItem(uint16_t id, uint8_t count)
 	} else if (it.isSplash() || it.isFluidContainer()) {
 		addByte(fluidMap[count & 7]);
 	} else if (it.isContainer()) {
-		addByte(0x00); // assigned loot container icon
-		addByte(0x00); // quiver ammo count
+		addByte(0x00);
 	} else if (it.classification > 0) {
 		addByte(0x00); // item tier (0-10)
 	} else if (it.showClientCharges) {
@@ -131,7 +164,9 @@ void NetworkMessage::addItem(const Item* item)
 	}
 
 	if (it.isContainer()) {
-		addByte(0x00);
+		// TODO(fusion): Container information depends on what we send as container
+		// type, so I'd assume we should be good with always sending a zero here?
+		addByte(0x00); // container type
 #if 0
 		const Container* container = item->getContainer();
 		if (container && it.weaponType == WEAPON_QUIVER) {

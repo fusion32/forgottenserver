@@ -45,8 +45,8 @@ import (
 #include <string.h>
 #include <zlib.h>
 
-z_stream *ZStreamAlloc(void){
-	return (z_stream*)malloc(sizeof(z_stream));
+z_stream *ZStreamAllocZ(void){
+	return (z_stream*)calloc(1, sizeof(z_stream));
 }
 
 void ZStreamFree(z_stream *strm){
@@ -65,7 +65,7 @@ func InflateDestroy(strm *C.z_stream) {
 }
 
 func InflateNew() (strm *C.z_stream, err error) {
-	strm = C.ZStreamAlloc()
+	strm = C.ZStreamAllocZ()
 	ret := C.InflateInitWrapper(strm)
 	if ret != C.Z_OK {
 		err = fmt.Errorf("failed to initialize inflate stream: (%v) %v",

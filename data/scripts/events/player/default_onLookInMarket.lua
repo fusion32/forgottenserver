@@ -83,9 +83,9 @@ event.onLookInMarket = function(self, itemType)
 				end
 			else
 				-- extra def
-				local xD = itemType:getExtraDefense()
-				if xD ~= 0 then
-					def = string.format("%d %+d", def, xD)
+				local extraDef = itemType:getExtraDefense()
+				if extraDef ~= 0 then
+					def = string.format("%d %+d", def, extraDef)
 				end
 
 				response:addString(def)
@@ -269,16 +269,23 @@ event.onLookInMarket = function(self, itemType)
 	response:addString(string.format("%0.2f", itemType:getWeight() / 100))
 
 	-- to do
+	response:addU16(0) -- Augments
 	response:addU16(0) -- Imbuement Slots
 	response:addU16(0) -- Magic Shield Capacity
 	response:addU16(0) -- Cleave
 	response:addU16(0) -- Damage Reflection
 	response:addU16(0) -- Perfect Shot
 	response:addU16(0) -- Classification
+	response:addU16(0) -- Elemental Bond
+	response:addU16(0) -- Mantra
+	response:addU16(0) -- Imbuement Effect
 	response:addU16(0) -- Tier
 
-	-- buy stats
 	do
+		-- TODO(fusion): This is sent as a list with the first byte being the
+		-- number of stats. It's probably done this way to defer the computation
+		-- to the client, althought it does increase bandwidth usage so it does
+		-- look weird...
 		local stats = itemType:getMarketBuyStatistics()
 		if stats then
 			response:addByte(0x01)
@@ -291,8 +298,8 @@ event.onLookInMarket = function(self, itemType)
 		end
 	end
 
-	-- sell stats
 	do
+		-- TODO(fusion): Same as above.
 		local stats = itemType:getMarketSellStatistics()
 		if stats then
 			response:addByte(0x01)

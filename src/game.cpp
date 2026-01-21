@@ -61,12 +61,12 @@ Game::Game()
 
 void Game::start()
 {
-	// TODO(fusion): Add task to update status string every X seconds.
-
+	startTime = OTSYS_TIME();
 	g_scheduler.addEvent(createSchedulerTask(EVENT_CREATURE_THINK_INTERVAL, [this] { checkCreatures(0); }));
 	g_scheduler.addEvent(
 	    createSchedulerTask(getNumber(ConfigManager::PATHFINDING_INTERVAL), [this] { updateCreaturesPath(0); }));
 	g_scheduler.addEvent(createSchedulerTask(EVENT_DECAYINTERVAL, [this] { checkDecay(); }));
+	// TODO(fusion): Add task to update status string every X seconds.
 }
 
 GameState_t Game::getGameState() const { return gameState; }
@@ -85,11 +85,6 @@ void Game::setGameState(GameState_t newState)
 
 	gameState = newState;
 	switch (newState) {
-		case GAME_STATE_STARTUP:{
-			startTime = OTSYS_TIME();
-			break;
-		}
-
 		case GAME_STATE_INIT: {
 			groups.load();
 			g_chat->load();

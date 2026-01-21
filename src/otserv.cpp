@@ -251,6 +251,7 @@ int main(int argc, const char **argv){
 	tfs::iomarket::updateStatistics();
 
 	LOG("Loaded all modules, server starting up...");
+	g_game.start();
 	g_game.setGameState(GAME_STATE_NORMAL);
 
 	// TODO(fusion): Simplify threads?
