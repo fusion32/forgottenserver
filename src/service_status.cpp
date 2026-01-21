@@ -87,20 +87,19 @@ static asio::awaitable<void> StatusHandler(tcp::socket socket, tcp::endpoint end
         co_await asio::async_read(socket, asio::buffer(buffer, 2), use_awaitable);
         size_t requestLen = ((size_t)buffer[0]) | ((size_t)buffer[1] << 8);
         if(requestLen != 6){
-            std::cout << "StatusProcess: invalid request length " << requestLen << std::endl;
+            LOG_ERR("invalid request length {}", requestLen);
             co_return;
         }
 
         co_await asio::async_read(socket, asio::buffer(buffer, requestLen), use_awaitable);
         if(buffer[0] != 255 || buffer[1] != 255){
-            std::cout << "StatusProcess: expected status request type (255, 255), got ("
-                        << buffer[0] << ", " << buffer[1] << ")" << std::endl;
+            LOG_ERR("expected status request type (255, 255), got ({}, {})", buffer[0], buffer[1]);
             co_return;
         }
 
         std::string_view request{(const char*)&buffer[2], (const char*)&buffer[6]};
         if(request != "info"){
-            std::cout << "StatusProcess: unknown status request \"" << request << "\"" << std::endl;
+            LOG_ERR("unknown status request \"{}\"", request);
             co_return;
         }
 
@@ -109,7 +108,7 @@ static asio::awaitable<void> StatusHandler(tcp::socket socket, tcp::endpoint end
             co_await asio::async_write(socket, asio::buffer(buffer, resultLen), use_awaitable);
         }
     }catch(const boost::system::system_error &e){
-        std::cout << "StatusProcess: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
     }
 }
 
@@ -131,7 +130,7 @@ asio::awaitable<void> StatusService(tcp::endpoint endpoint,
         acceptor.listen(1024);
 
         std::vector<StatusRecord> statusRecords;
-        std::cout << ">> Status service listening on " << endpoint << std::endl;
+        LOG("Status service listening on {}", endpoint);
         while(true){
             tcp::endpoint peer_endpoint;
             tcp::socket socket = co_await acceptor.async_accept(peer_endpoint, use_awaitable);
@@ -142,7 +141,7 @@ asio::awaitable<void> StatusService(tcp::endpoint endpoint,
             }
         }
     }catch(const std::exception &e){
-        std::cout << ">> Status service error: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
         throw;
     }
 }

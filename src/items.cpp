@@ -292,7 +292,7 @@ Direction getDirection(std::string_view string)
 	if (auto it = DirectionsMap.find(string); it != DirectionsMap.end()) {
 		return it->second;
 	}
-	LOG_WARN("Invalid direction: {}", string);
+	LOG_WARN("invalid direction {}", string);
 	return DIRECTION_NORTH;
 }
 

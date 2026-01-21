@@ -43,13 +43,13 @@ ScriptingManager::~ScriptingManager()
 bool ScriptingManager::loadScriptSystems()
 {
 	if (g_luaEnvironment.loadFile("data/global.lua") == -1) {
-		LOG_WARN("Can not load data/global.lua");
+		LOG_WARN("can not load data/global.lua");
 	}
 
 	g_scripts = new Scripts();
-	LOG("Loading lua libs");
+	LOG("Loading lua libs...");
 	if (!g_scripts->loadScripts("scripts/lib", true, false)) {
-		LOG_ERR("Unable to load lua libs!");
+		LOG_ERR("unable to load lua libs!");
 		return false;
 	}
 
@@ -57,49 +57,49 @@ bool ScriptingManager::loadScriptSystems()
 
 	g_weapons = new Weapons();
 	if (!g_weapons->loadFromXml()) {
-		LOG_ERR("Unable to load weapons!");
+		LOG_ERR("unable to load weapons!");
 		return false;
 	}
 	g_weapons->loadDefaults();
 
 	g_spells = new Spells();
 	if (!g_spells->loadFromXml()) {
-		LOG_ERR("Unable to load spells!");
+		LOG_ERR("unable to load spells!");
 		return false;
 	}
 
 	g_actions = new Actions();
 	if(!g_actions->loadFromXml()){
-		LOG_ERR("Unable to load actions!");
+		LOG_ERR("unable to load actions!");
 		return false;
 	}
 
 	g_talkActions = new TalkActions();
 	if (!g_talkActions->loadFromXml()) {
-		LOG_ERR("Unable to load talk actions!");
+		LOG_ERR("unable to load talk actions!");
 		return false;
 	}
 
 	g_moveEvents = new MoveEvents();
 	if (!g_moveEvents->loadFromXml()) {
-		LOG_ERR("Unable to load move events!");
+		LOG_ERR("unable to load move events!");
 		return false;
 	}
 
 	g_creatureEvents = new CreatureEvents();
 	if (!g_creatureEvents->loadFromXml()) {
-		LOG_ERR("Unable to load creature events!");
+		LOG_ERR("unable to load creature events!");
 		return false;
 	}
 
 	g_globalEvents = new GlobalEvents();
 	if (!g_globalEvents->loadFromXml()) {
-		LOG_ERR("Unable to load global events!");
+		LOG_ERR("unable to load global events!");
 		return false;
 	}
 
 	if (!tfs::events::load()) {
-		LOG_ERR("Unable to load events!");
+		LOG_ERR("unable to load events!");
 		return false;
 	}
 

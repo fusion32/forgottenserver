@@ -243,7 +243,7 @@ static asio::awaitable<void> HttpHandler(tcp::socket socket, tcp::endpoint endpo
     }catch(const boost::system::system_error &e){
         if(e.code() != beast::http::error::end_of_stream
                 && e.code() != beast::error::timeout){
-            std::cout << "HttpConnectionHandler: " << e.what() << std::endl;
+            LOG_ERR("{}", e.what());
         }
     }
 }
@@ -262,7 +262,7 @@ asio::awaitable<void> HttpService(tcp::endpoint endpoint){
         acceptor.bind(endpoint);
         acceptor.listen(1024);
 
-        std::cout << ">> HTTP service listening on " << endpoint << std::endl;
+        LOG("HTTP service listening on {}", endpoint);
         while(true){
             tcp::endpoint peer_endpoint;
             tcp::socket socket = co_await acceptor.async_accept(peer_endpoint, use_awaitable);
@@ -271,7 +271,7 @@ asio::awaitable<void> HttpService(tcp::endpoint endpoint){
                     asio::detached);
         }
     }catch(const std::exception &e){
-        std::cout << "Status service error: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
         throw;
     }
 }

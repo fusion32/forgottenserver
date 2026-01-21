@@ -62,9 +62,10 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
-#include <fmt/format.h>
 #include <fmt/color.h>
 #include <fmt/chrono.h>
+#include <fmt/format.h>
+#include <fmt/ostream.h>
 #include <forward_list>
 #include <functional>
 #include <iostream>

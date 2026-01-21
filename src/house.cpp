@@ -584,7 +584,7 @@ bool Houses::loadHousesXML(const std::string& filename)
 
 		House* house = getHouse(houseId);
 		if (!house) {
-			std::cout << "Error: [Houses::loadHousesXML] Unknown house, id = " << houseId << std::endl;
+			LOG_ERR("unknown house, id = {}", houseId);
 			return false;
 		}
 
@@ -594,8 +594,7 @@ bool Houses::loadHousesXML(const std::string& filename)
 		                  pugi::cast<uint16_t>(houseNode.attribute("entryy").value()),
 		                  pugi::cast<uint16_t>(houseNode.attribute("entryz").value()));
 		if (entryPos.x == 0 && entryPos.y == 0 && entryPos.z == 0) {
-			std::cout << "[Warning - Houses::loadHousesXML] House entry not set - Name: " << house->getName()
-			          << " - House id: " << houseId << std::endl;
+			LOG_WARN("house entry not set - Name: {} - House id: {}", house->getName(), houseId);
 		}
 		house->setEntryPos(entryPos);
 

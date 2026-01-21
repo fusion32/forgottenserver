@@ -44,6 +44,11 @@ struct tm GetLocalTime(time_t t);
 struct tm GetGMTime(time_t t);
 void PrintBuffer(std::string_view name, const uint8_t *data, int len);
 
+// Custom Formatters
+//==============================================================================
+template<> struct fmt::formatter<boost::asio::ip::address> : fmt::ostream_formatter {};
+template<> struct fmt::formatter<boost::asio::ip::tcp::endpoint> : fmt::ostream_formatter {};
+
 // Logging
 //==============================================================================
 #define LOG(...) \

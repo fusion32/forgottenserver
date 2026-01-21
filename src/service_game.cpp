@@ -101,9 +101,8 @@ struct GameConnection{
         if(deflateStreamInitialized){
             int ret = deflateEnd(&deflateStream);
             if(ret != Z_OK){
-                std::cout << "Failed to end deflate stream: (" << ret << ") "
-                        << (deflateStream.msg ? deflateStream.msg : "no message")
-                        << std::endl;
+                LOG_WARN("failed to end deflate stream: ({}) {}", ret,
+                        (deflateStream.msg ? deflateStream.msg : "no message"));
             }
         }
     }
@@ -3676,7 +3675,7 @@ static bool CompressOutput(const GameConnection_ptr &connection,
     uint8_t *outputBuffer = output->getOutputBuffer();
     int uncompressedSize = output->getOutputLength();
     if(uncompressedSize <= 0){
-        std::cout << "Trying to compress empty output..." << std::endl;
+        LOG_ERR("empty message");
         return false;
     }
 
@@ -3685,8 +3684,8 @@ static bool CompressOutput(const GameConnection_ptr &connection,
                                Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
         if(ret != Z_OK){
             const char *msg = connection->deflateStream.msg;
-            std::cout << "Failed to initialize deflate stream: (" << ret << ") "
-                << (msg ? msg : "no message") << std::endl;
+            LOG_ERR("failed to initialize deflate stream: ({}) {}",
+                    ret, (msg ? msg : "no message"));
             return false;
         }
         connection->deflateStreamInitialized = true;
@@ -3701,8 +3700,8 @@ static bool CompressOutput(const GameConnection_ptr &connection,
 
     int ret = deflate(strm, Z_SYNC_FLUSH);
     if(ret != Z_OK || strm->avail_out == 0){
-        std::cout << "Failed to compress output: (" << ret << ") "
-                << (strm->msg ? strm->msg : "no message") << std::endl;
+        LOG_ERR("failed to compress output: ({}) {}",
+                ret, (strm->msg ? strm->msg : "no message"));;
         return false;
     }
 
@@ -3717,7 +3716,7 @@ static bool CompressOutput(const GameConnection_ptr &connection,
             && buffer[compressedSize - 1] == 0xFF){
         compressedSize -= 4;
     }else{
-        std::cout << "Compressed data is missing empty stored block at the end" << std::endl;
+        LOG_ERR("compressed data is missing empty stored block at the end");
         return false;
     }
 
@@ -3834,7 +3833,7 @@ static asio::awaitable<void> GameReader(GameConnection_ptr connection){
         if(e.code() == asio::error::eof){
             Close(connection);
         }else{
-            std::cout << "GameReader: " << e.what() << std::endl;
+            LOG_ERR("{}", e.what());
             Abort(connection);
         }
     }
@@ -3875,7 +3874,7 @@ static asio::awaitable<void> GameWriter(GameConnection_ptr connection){
             }
 
             if(output->getOutputLength() <= 0){
-                std::cout << "GameWriter: ignoring empty output message..." << std::endl;
+                LOG_WARN("ignoring empty output message...");
                 continue;
             }
 
@@ -3896,7 +3895,7 @@ static asio::awaitable<void> GameWriter(GameConnection_ptr connection){
             timer.cancel();
         }
     }catch(const boost::system::system_error &e){
-        std::cout << "GameWriter: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
         Abort(connection);
     }
 }
@@ -4048,7 +4047,7 @@ static asio::awaitable<void> GameHandshake(GameConnection_ptr connection){
                     asio::detached);
         }
     }catch(const boost::system::system_error &e){
-        std::cout << "GameHandshake: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
         Abort(connection);
     }
 }
@@ -4068,7 +4067,7 @@ asio::awaitable<void> GameService(tcp::endpoint endpoint){
         acceptor.bind(endpoint);
         acceptor.listen(1024);
 
-        std::cout << ">> Game service listening on " << endpoint << std::endl;
+        LOG("Game service listening on {}", endpoint);
         while(true){
             // NOTE(fusion): Each connection will have two coroutines + timers
             // running after the handshake which means that on a multi-threaded
@@ -4089,7 +4088,7 @@ asio::awaitable<void> GameService(tcp::endpoint endpoint){
                     asio::detached);
         }
     }catch(const std::exception &e){
-        std::cout << ">> Game service error: " << e.what() << std::endl;
+        LOG_ERR("{}", e.what());
         throw;
     }
 }

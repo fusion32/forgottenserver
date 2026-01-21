@@ -127,46 +127,46 @@ int main(int argc, const char **argv){
 
 	g_game.setGameState(GAME_STATE_STARTUP);
 
-	LOG("Loading config");
+	LOG("Loading config...");
 	if (!ConfigManager::load()) {
-		LOG_ERR("Unable to load {}!", getString(ConfigManager::CONFIG_FILE));
+		LOG_ERR("unable to load {}", getString(ConfigManager::CONFIG_FILE));
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading rsa private key");
+	LOG("Loading rsa private key...");
 	if(!RsaLoadPrivateKey()){
-		LOG_ERR("Failed to load rsa private key");
+		LOG_ERR("failed to load rsa private key");
 		return EXIT_FAILURE;
 	}
 
 	LOG("Establishing database connection...");
 	if (!Database::getInstance().connect()) {
-		LOG_ERR("Failed to connect to database.");
+		LOG_ERR("failed to connect to database");
 		return EXIT_FAILURE;
 	}
 
 	LOG("MySQL: {}", Database::getClientVersion());
-	LOG("Running database manager");
+	LOG("Running database manager...");
 	if (!DatabaseManager::isDatabaseSetup()) {
-		LOG_ERR("The database you have specified in config.lua is empty,"
-				" please import the schema.sql to your database.");
+		LOG_ERR("the database you have specified in config.lua is empty,"
+				" please import the schema.sql to your database");
 		return EXIT_FAILURE;
 	}
 
 	DatabaseManager::updateDatabase();
 	if (getBoolean(ConfigManager::OPTIMIZE_DATABASE) && !DatabaseManager::optimizeTables()) {
-		LOG("No tables were optimized.");
+		LOG("No tables were optimized");
 	}
 
-	LOG("Loading vocations");
+	LOG("Loading vocations...");
 	if (!g_vocations.loadFromXml()) {
-		LOG_ERR("Unable to load vocations!");
+		LOG_ERR("unable to load vocations");
 		return EXIT_FAILURE;
 	}
 
 	LOG("Loading items...");
 	if (!Item::items.loadFromOtb()) {
-		LOG_ERR("Unable to load items (OTB)!");
+		LOG_ERR("unable to load items (OTB)");
 		return EXIT_FAILURE;
 	}
 
@@ -176,37 +176,37 @@ int main(int argc, const char **argv){
 			Item::items.buildNumber);
 
 	if (!Item::items.loadFromXml()) {
-		LOG_ERR("Unable to load items (XML)!");
+		LOG_ERR("unable to load items (XML)");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading script systems");
+	LOG("Loading script systems...");
 	if (!ScriptingManager::getInstance().loadScriptSystems()) {
-		LOG_ERR("Failed to load script systems");
+		LOG_ERR("failed to load script systems");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading lua scripts");
+	LOG("Loading lua scripts...");
 	if (!g_scripts->loadScripts("scripts", false, false)) {
-		LOG_ERR("Failed to load lua scripts");
+		LOG_ERR("failed to load lua scripts");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading monsters");
+	LOG("Loading monsters...");
 	if (!g_monsters.loadFromXml()) {
-		LOG_ERR("Unable to load monsters!");
+		LOG_ERR("unable to load monsters");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading lua monsters");
+	LOG("Loading lua monsters...");
 	if (!g_scripts->loadScripts("monster", false, false)) {
-		LOG_ERR("Failed to load lua monsters");
+		LOG_ERR("failed to load lua monsters");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading outfits");
+	LOG("Loading outfits...");
 	if (!Outfits::getInstance().loadFromXml()) {
-		LOG_ERR("Unable to load outfits!");
+		LOG_ERR("unable to load outfits");
 		return EXIT_FAILURE;
 	}
 
@@ -219,17 +219,17 @@ int main(int argc, const char **argv){
 	} else if (worldType == "PVP-ENFORCED") {
 		g_game.setWorldType(WORLD_TYPE_PVP_ENFORCED);
 	} else {
-		LOG_ERR("Unknown world type {}, valid world types are: pvp, no-pvp and pvp-enforced.", worldType);
+		LOG_ERR("unknown world type {}, valid world types are: pvp, no-pvp and pvp-enforced", worldType);
 		return EXIT_FAILURE;
 	}
 
-	LOG("Loading map");
+	LOG("Loading map...");
 	if (!g_game.loadMainMap(getString(ConfigManager::MAP_NAME))) {
-		LOG_ERR("Failed to load map");
+		LOG_ERR("failed to load map");
 		return EXIT_FAILURE;
 	}
 
-	LOG("Initializing gamestate");
+	LOG("Initializing game state...");
 	g_game.setGameState(GAME_STATE_INIT);
 
 	RentPeriod_t rentPeriod;
@@ -250,7 +250,7 @@ int main(int argc, const char **argv){
 	tfs::iomarket::checkExpiredOffers();
 	tfs::iomarket::updateStatistics();
 
-	LOG("Loaded all modules, server starting up...");
+	LOG("Server starting up...");
 	g_game.start();
 	g_game.setGameState(GAME_STATE_NORMAL);
 
@@ -315,11 +315,11 @@ int main(int argc, const char **argv){
 	}
 #endif
 
-	LOG("{} Online!", getString(ConfigManager::SERVER_NAME));
+	LOG("{} online!", getString(ConfigManager::SERVER_NAME));
 	try{
 		g_ioContext.run();
 	}catch(const std::exception &e){
-		LOG_ERR("Server error: {}", e.what());
+		LOG_ERR("server error: {}", e.what());
 	}
 
 	LOG("Shutting down...");
