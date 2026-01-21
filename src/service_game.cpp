@@ -203,7 +203,6 @@ void Detach(GameConnection_ptr connection){
     if(Player *player = connection->player){
         connection->player = NULL;
         player->connection = NULL;
-
         // EVENT: onPlayerDetach ?
         g_game.ReleaseCreature(player);
     }
@@ -2539,30 +2538,56 @@ void SendVIPEntries(const GameConnection_ptr &connection){
     }
 }
 
-void SendItemClasses(const GameConnection_ptr &connection){
+void SendForgeData(const GameConnection_ptr &connection){
     NetworkMessage msg;
     msg.addByte(0x86);
 
-    uint8_t classSize = 4;
-    uint8_t tiersSize = 10;
+    const int numClasses   = 4;
+    const int maxTiers     = 10;
+    const int classTiers[] = {1, 2, 3, 10};
 
-    // item classes
-    msg.addByte(classSize);
-    for (uint8_t i = 0; i < classSize; i++) {
-        msg.addByte(i + 1); // class id
-
-        // item tiers
-        msg.addByte(tiersSize); // tiers size
-        for (uint8_t j = 0; j < tiersSize; j++) {
-            msg.addByte(j);           // tier id
-            msg.add<uint64_t>(10000); // upgrade cost
+    msg.addByte((uint8_t)numClasses);
+    for(int i = 0; i < numClasses; i += 1){
+        int numTiers = classTiers[i];
+        msg.addByte((uint8_t)(i + 1));
+        msg.addByte((uint8_t)numTiers);
+        for(int j = 0; j < numTiers; j += 1){
+            msg.addByte((uint8_t)j);
+            msg.add<uint64_t>(1); // fusion price ?
         }
     }
 
-    // unknown
-    for (uint8_t i = 0; i < tiersSize + 1; i++) {
-        msg.addByte(0);
+    msg.addByte((uint8_t)maxTiers);
+    for(int i = 0; i < maxTiers; i += 1){
+        msg.addByte((uint8_t)(i + 1));
+        msg.addByte(1); // transfer cores ?
     }
+
+    msg.addByte((uint8_t)maxTiers);
+    for(int i = 0; i < maxTiers; i += 1){
+        msg.addByte((uint8_t)i); // this one looks weird
+        msg.add<uint64_t>(1); // fusion convergence price ?
+    }
+
+    msg.addByte((uint8_t)maxTiers);
+    for(int i = 0; i < maxTiers; i += 1){
+        msg.addByte((uint8_t)(i + 1));
+        msg.add<uint64_t>(1); // transfer convergence price ?
+    }
+
+    msg.addByte(20);        // dust per sliver
+    msg.addByte(3);         // slivers per conversion
+    msg.addByte(50);        // slivers per core
+    msg.addByte(75);        // increase dust limit cost (current dust limit - this value)
+    msg.add<uint16_t>(100); // cur dust limit
+    msg.add<uint16_t>(325); // max dust limit
+    msg.addByte(100);       // fusion dust cost
+    msg.addByte(130);       // fusion convergence dust cost
+    msg.addByte(100);       // transfer dust cost
+    msg.addByte(160);       // transfer convergence dust cost
+    msg.addByte(50);        // fusion success chance
+    msg.addByte(15);        // fusion success chance increment
+    msg.addByte(50);        // fusion tier loss chance reduction
 
     WriteToOutputBuffer(connection, msg);
 }
@@ -2864,11 +2889,15 @@ static void ParseLookInBattleList(const GameConnection_ptr &connection, NetworkM
 }
 
 static void ParseQuickLoot(const GameConnection_ptr &connection, NetworkMessage &input){
+    // TODO(fusion): As per Canary, there is a mode 2 where the item id and
+    // stackpos are not included. I'm not exactly sure how to trigger it but
+    // it should be investigated.
+    uint8_t mode = input.getByte();
     Position pos = input.getPosition();
     uint16_t spriteId = input.get<uint16_t>();
     uint8_t stackpos = input.getByte();
-    bool quickLootAllCorpses = input.getByte() != 0;
-    g_game.playerQuickLoot(connection->player, pos, stackpos, spriteId, quickLootAllCorpses);
+    bool quickLootNearbyCorpses = (mode == 1);
+    g_game.playerQuickLoot(connection->player, pos, stackpos, spriteId, quickLootNearbyCorpses);
 }
 
 static void ParseSay(const GameConnection_ptr &connection, NetworkMessage &input){
@@ -3663,8 +3692,6 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
     }else{
         connection->clientSequence += 1;
     }
-
-    // TODO(fusion): Maybe inflate? Check sequence high bits.
 
     PrintBuffer("INPUT", input.getRemainingBuffer(), input.getRemainingLength());
     co_return true;

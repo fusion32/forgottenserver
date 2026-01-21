@@ -819,12 +819,6 @@ public:
 			SendVIPEntries(connection);
 		}
 	}
-	void sendItemClasses() const
-	{
-		if (connection) {
-			SendItemClasses(connection);
-		}
-	}
 	void sendMapDescription() const
 	{
 		if (connection) {

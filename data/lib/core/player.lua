@@ -633,14 +633,45 @@ function Player.sendHighscores(self, entries, params)
 	return true
 end
 
-function Player.takeScreenshot(self, screenshotType, ignoreConfig)
-	if not ignoreConfig and (screenshotType < SCREENSHOT_TYPE_FIRST or screenshotType > SCREENSHOT_TYPE_LAST) then
-		return false
-	end
-
+-- TODO(fusion): Not the biggest fan of having these in Lua, but it is what it is.
+function Player.sendNotification(self, notification)
 	local msg = NetworkMessage()
 	msg:addByte(0x75)
-	msg:addByte(screenshotType)
+	msg:addByte(NOTIFICATION_GROUP_SIMPLE)
+	msg:addByte(notification)
+	msg:sendToPlayer(self)
+	msg:delete()
+	return true
+end
+
+function Player.sendSkillUp(self, skillId, newLevel)
+	local msg = NetworkMessage()
+	msg:addByte(0x75)
+	if skillId == SKILL_LEVEL then
+		msg:addByte(NOTIFICATION_GROUP_LEVEL)
+	else
+		msg:addByte(NOTIFICATION_GROUP_SKILL)
+		if skillId == SKILL_MAGLEVEL then
+			msg:addByte(1)
+		elseif skillId == SKILL_SWORD then
+			msg:addByte(2)
+		elseif skillId == SKILL_CLUB then
+			msg:addByte(3)
+		elseif skillId == SKILL_AXE then
+			msg:addByte(4)
+		elseif skillId == SKILL_FIST then
+			msg:addByte(5)
+		elseif skillId == SKILL_DISTANCE then
+			msg:addByte(6)
+		elseif skillId == SKILL_SHIELD then
+			msg:addByte(7)
+		elseif skillId == SKILL_FISHING then
+			msg:addByte(8)
+		else
+			msg:addByte(0)
+		end
+	end
+	msg:addU16(newLevel)
 	msg:sendToPlayer(self)
 	msg:delete()
 	return true

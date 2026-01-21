@@ -21,6 +21,7 @@
 #include "outfit.h"
 #include "party.h"
 #include "scheduler.h"
+#include "service_game.h"
 #include "spectators.h"
 #include "storeinbox.h"
 #include "tools.h"
@@ -1148,13 +1149,17 @@ void Player::onCreatureAppear(Creature* creature, bool isLogin, MagicEffectClass
 		// send a 0F ourselves followed by world data, character data, etc... If
 		// we don't send the 0A, the client doesn't seem to send a 0F which also
 		// doens't make a difference since it will simply enter world.
+		//   UPDATE: This actually has a meaning. After the character dies, it can
+		// send an 0F to respawn right away, without having to relog. We might want
+		// to send a 0A when logging in, and then react to the player sending a 0F
+		// back, idk.
 		//SendPendingStateEntered(connection);
 
 		// sendPreyData();
 		// sendResources();
 		// sendDailyRewards();
-		// sendCyclopediaMonsters(); ?
-		// sendForgeData();
+		// sendCyclopediaMonsters();
+		//SendForgeData(connection);
 
 		SendAllowBugReports(connection, false);
 
@@ -1163,9 +1168,31 @@ void Player::onCreatureAppear(Creature* creature, bool isLogin, MagicEffectClass
 		SendUnk0B(connection, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 	}
 
-	// TODO(fusion): Have something to force a separate packet here?
-	(void)isLogin;
-/*
+	{
+		sendEnterWorld();
+		sendMapDescription();
+
+		for (int i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; ++i) {
+			sendInventoryItem((slots_t)i, getInventoryItem((slots_t)i));
+		}
+
+		sendInventoryItem(CONST_SLOT_STORE_INBOX, getStoreInbox()->getItem());
+
+		sendStats();
+		sendSkills();
+		sendIcons();
+		sendLight();
+		sendBasicData();
+		sendItems();
+		sendVIPEntries();
+
+		openSavedContainers();
+
+		if (magicEffect != CONST_ME_NONE) {
+			sendMagicEffect(magicEffect);
+		}
+	}
+
 	if (isLogin) {
 		// Restore conditions stored during previous logout
 		for (Condition* condition : storedConditionList) {
@@ -1227,34 +1254,6 @@ void Player::onCreatureAppear(Creature* creature, bool isLogin, MagicEffectClass
 			return;
 		}
 	}
-*/
-
-	sendEnterWorld();
-	sendMapDescription();
-
-	for (int i = CONST_SLOT_FIRST; i <= CONST_SLOT_LAST; ++i) {
-		sendInventoryItem((slots_t)i, getInventoryItem((slots_t)i));
-	}
-
-	sendInventoryItem(CONST_SLOT_STORE_INBOX, getStoreInbox()->getItem());
-
-	sendStats();
-	sendSkills();
-
-/*
-	sendIcons();
-	sendLight();
-	sendVIPEntries();
-	//sendItemClasses();
-	//sendBasicData();
-	sendItems();
-
-	openSavedContainers();
-
-	if (magicEffect != CONST_ME_NONE) {
-		sendMagicEffect(magicEffect);
-	}
-*/
 }
 
 void Player::onAttackedCreatureDisappear(bool isLogout)

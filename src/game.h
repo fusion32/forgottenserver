@@ -337,7 +337,7 @@ public:
 	void playerLookAt(Player *player, const Position& pos, uint8_t stackPos);
 	void playerLookInBattleList(Player *player, uint32_t creatureId);
 	void playerQuickLoot(Player *player, const Position &pos, uint8_t stackPos,
-							uint16_t spriteId, bool quickLootAllCorpses);
+							uint16_t spriteId, bool quickLootNearbyCorpses);
 	void playerSay(Player *player, uint16_t channelId, SpeakClasses type, const std::string& receiver,
 	               const std::string& text);
 	void playerRequestChannels(Player *player);

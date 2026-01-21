@@ -147,7 +147,7 @@ void SendUpdatedVIPStatus(const GameConnection_ptr &connection, uint32_t guid, V
 void SendVIP(const GameConnection_ptr &connection, uint32_t guid, const std::string& name,
              const std::string& description, uint32_t icon, bool notify, VipStatus_t status);
 void SendVIPEntries(const GameConnection_ptr &connection);
-void SendItemClasses(const GameConnection_ptr &connection);
+void SendForgeData(const GameConnection_ptr &connection);
 void SendSpellCooldown(const GameConnection_ptr &connection, uint8_t spellId, uint32_t time);
 void SendSpellGroupCooldown(const GameConnection_ptr &connection, SpellGroup_t groupId, uint32_t time);
 void SendUseItemCooldown(const GameConnection_ptr &connection, uint32_t time);

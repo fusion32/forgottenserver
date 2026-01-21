@@ -40,6 +40,8 @@
 #   error "Unknown arch."
 #endif
 
+#define NARRAY(arr) (int)(sizeof(arr)/sizeof(arr[0]))
+
 struct tm GetLocalTime(time_t t);
 struct tm GetGMTime(time_t t);
 void PrintBuffer(std::string_view name, const uint8_t *data, int len);

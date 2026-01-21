@@ -2973,10 +2973,10 @@ void Game::playerLookInBattleList(Player *player, uint32_t creatureId)
 }
 
 void Game::playerQuickLoot(Player *player, const Position &pos, uint8_t stackPos,
-						uint16_t spriteId, bool quickLootAllCorpses){
+						uint16_t spriteId, bool quickLootNearbyCorpses){
 	// TODO(fusion): This is a temporary measure to make looting corpses work
 	// when the client sends a quick loot message rather than a use.
-	(void)quickLootAllCorpses;
+	(void)quickLootNearbyCorpses;
 	int containerID = player->findAvailableContainerID();
 	playerUseItem(player, pos, stackPos, (uint8_t)containerID, spriteId);
 }

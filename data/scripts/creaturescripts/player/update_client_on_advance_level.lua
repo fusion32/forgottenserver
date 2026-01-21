@@ -8,7 +8,7 @@ function updateClientOnAdvanceLevel.onAdvance(player, skill, oldLevel, newLevel)
 	player:updateClientExpDisplay()
 
 	if newLevel > oldLevel then
-		player:takeScreenshot(SCREENSHOT_TYPE_LEVELUP)
+		player:sendSkillUp(SKILL_LEVEL, newLevel)
 	end
 	return true
 end
