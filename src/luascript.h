@@ -1517,17 +1517,21 @@ template <typename T>
 T getField(lua_State* L, int32_t arg, std::string_view key)
 {
 	lua_getfield(L, arg, key.data());
-	return getNumber<T>(L, -1);
+	T result = getNumber<T>(L, -1);
+	lua_pop(L, 1);
+	return result;
 }
 
 template <typename T, typename... Args>
 T getField(lua_State* L, int32_t arg, std::string_view key, T&& defaultValue)
 {
 	lua_getfield(L, arg, key.data());
-	return getNumber<T>(L, -1, std::forward<T>(defaultValue));
+	T result = getNumber<T>(L, -1, std::forward<T>(defaultValue));
+	lua_pop(L, 1);
+	return result;
 }
 
-std::string getFieldString(lua_State* L, int32_t arg, std::string_view key);
+std::string getFieldString(lua_State* L, int32_t arg, const char *key);
 
 // Push
 void pushBoolean(lua_State* L, bool value);

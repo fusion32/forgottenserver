@@ -6,6 +6,7 @@ function onCreatureAppear(cid)				npcHandler:onCreatureAppear(cid)			end
 function onCreatureDisappear(cid)			npcHandler:onCreatureDisappear(cid)			end
 function onCreatureSay(cid, type, msg)		npcHandler:onCreatureSay(cid, type, msg)	end
 function onThink()							npcHandler:onThink()						end
+function onPlayerCloseChannel(cid)			npcHandler:onPlayerCloseChannel(cid)		end
 
 local voices = { {text = "Runes, wands, rods, health and mana potions! Have a look!"} }
 npcHandler:addModule(VoiceModule:new(voices))

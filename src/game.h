@@ -315,7 +315,7 @@ public:
 	                        bool ignoreCap = false, bool inBackpacks = false);
 	void playerSellItem(Player *player, uint16_t spriteId, uint8_t count, uint16_t amount,
 	                    bool ignoreEquipped = false);
-	void playerCloseShop(Player *player);
+	void playerCloseNpcTrade(Player *player);
 	void playerRequestTrade(Player *player, const Position& pos, uint8_t stackPos, uint32_t tradePlayerId,
 	                        uint16_t spriteId);
 	void playerLookInTrade(Player *player, bool lookAtCounterOffer, uint8_t index);

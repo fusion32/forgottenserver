@@ -523,6 +523,13 @@ enum MapMark_t
 	MAPMARK_GREENSOUTH = 19,
 };
 
+enum NpcInteractionIcon: uint8_t {
+	NPC_INTERACTION_TRADE = 0,
+	NPC_INTERACTION_YES   = 7,
+	NPC_INTERACTION_NO    = 8,
+	NPC_INTERACTION_BYE   = 9,
+};
+
 struct Outfit_t
 {
 	uint16_t lookType = 0;
@@ -543,6 +550,11 @@ struct LightInfo
 {
 	uint8_t level = 0;
 	uint8_t color = 215;
+};
+
+struct NpcInteraction {
+	uint8_t     icon = 0;
+	std::string text = "";
 };
 
 struct ShopInfo
@@ -653,7 +665,6 @@ struct CombatDamage
 
 using MarketOfferList = std::list<MarketOffer>;
 using HistoryMarketOfferList = std::list<HistoryMarketOffer>;
-using ShopInfoList = std::list<ShopInfo>;
 
 enum MonstersEvent_t : uint8_t
 {

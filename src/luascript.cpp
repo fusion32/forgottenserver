@@ -890,15 +890,7 @@ Position tfs::lua::getPosition(lua_State* L, int32_t arg, int32_t& stackpos)
 	    getField<uint16_t>(L, arg, "y"),
 	    getField<uint8_t>(L, arg, "z"),
 	};
-
-	lua_getfield(L, arg, "stackpos");
-	if (lua_isnil(L, -1) == 1) {
-		stackpos = 0;
-	} else {
-		stackpos = getNumber<int32_t>(L, -1);
-	}
-
-	lua_pop(L, 4);
+	stackpos = getField<int32_t>(L, arg, "stackpos", 0);
 	return position;
 }
 
@@ -909,8 +901,6 @@ Position tfs::lua::getPosition(lua_State* L, int32_t arg)
 	    getField<uint16_t>(L, arg, "y"),
 	    getField<uint8_t>(L, arg, "z"),
 	};
-
-	lua_pop(L, 3);
 	return position;
 }
 
@@ -932,8 +922,6 @@ static Outfit_t getOutfit(lua_State* L, int32_t arg)
 	    .lookMountLegs = tfs::lua::getField<uint8_t>(L, arg, "lookMountLegs"),
 	    .lookMountFeet = tfs::lua::getField<uint8_t>(L, arg, "lookMountFeet"),
 	};
-
-	lua_pop(L, 12);
 	return outfit;
 }
 
@@ -945,8 +933,6 @@ static Outfit getOutfitClass(lua_State* L, int32_t arg)
 	    .premium = tfs::lua::getField<uint8_t>(L, arg, "premium") == 1,
 	    .unlocked = tfs::lua::getField<uint8_t>(L, arg, "unlocked") == 1,
 	};
-
-	lua_pop(L, 4);
 	return outfit;
 }
 
@@ -956,32 +942,29 @@ static LuaVariant getVariant(lua_State* L, int32_t arg)
 	switch (tfs::lua::getField<LuaVariantType_t>(L, arg, "type")) {
 		case VARIANT_NUMBER: {
 			var.setNumber(tfs::lua::getField<uint32_t>(L, arg, "number"));
-			lua_pop(L, 2);
 			break;
 		}
 
 		case VARIANT_STRING: {
 			var.setString(tfs::lua::getFieldString(L, arg, "string"));
-			lua_pop(L, 2);
 			break;
 		}
 
 		case VARIANT_POSITION:
 			lua_getfield(L, arg, "pos");
-			var.setPosition(tfs::lua::getPosition(L, lua_gettop(L)));
-			lua_pop(L, 2);
+			var.setPosition(tfs::lua::getPosition(L, -1));
+			lua_pop(L, 1);
 			break;
 
 		case VARIANT_TARGETPOSITION: {
 			lua_getfield(L, arg, "pos");
-			var.setTargetPosition(tfs::lua::getPosition(L, lua_gettop(L)));
-			lua_pop(L, 2);
+			var.setTargetPosition(tfs::lua::getPosition(L, -1));
+			lua_pop(L, 1);
 			break;
 		}
 
 		default: {
 			var = {};
-			lua_pop(L, 1);
 			break;
 		}
 	}
@@ -1042,10 +1025,17 @@ Player* tfs::lua::getPlayer(lua_State* L, int32_t arg)
 	return g_game.getPlayerByID(getNumber<uint32_t>(L, arg));
 }
 
-std::string tfs::lua::getFieldString(lua_State* L, int32_t arg, const std::string_view key)
+std::string tfs::lua::getFieldString(lua_State* L, int32_t idx, const char *k)
 {
-	lua_getfield(L, arg, key.data());
-	return getString(L, -1);
+	// NOTE(fusion): We could also return a string_view and it would be valid as
+	// long as the table holds the string reference to avoid it being collected.
+	// NOTE(fusion): Just a reminder that we cannot safely use `string_view.data`
+	// because it may not be null terminated. This is yet another detail that
+	// plagues this codebase.
+	lua_getfield(L, idx, k);
+	std::string result = getString(L, -1);
+	lua_pop(L, 1);
+	return result;
 }
 
 static LuaDataType getUserdataType(lua_State* L, int32_t arg)
@@ -2082,6 +2072,12 @@ void LuaScriptInterface::registerFunctions()
 	registerEnum(L, MAPMARK_REDWEST);
 	registerEnum(L, MAPMARK_GREENNORTH);
 	registerEnum(L, MAPMARK_GREENSOUTH);
+
+	// Use with openNpcChannel
+	registerEnum(L, NPC_INTERACTION_TRADE);
+	registerEnum(L, NPC_INTERACTION_YES);
+	registerEnum(L, NPC_INTERACTION_NO);
+	registerEnum(L, NPC_INTERACTION_BYE);
 
 	// Use with Game.getReturnMessage
 	registerEnum(L, RETURNVALUE_NOERROR);
@@ -7348,7 +7344,6 @@ int LuaScriptInterface::luaItemSetReflect(lua_State* L)
 	    tfs::lua::getField<uint16_t>(L, 3, "percent"),
 	    tfs::lua::getField<uint16_t>(L, 3, "chance"),
 	};
-	lua_pop(L, 2);
 
 	item->setReflect(tfs::lua::getNumber<CombatType_t>(L, 2), reflect);
 	tfs::lua::pushBoolean(L, true);
@@ -9798,8 +9793,8 @@ int LuaScriptInterface::luaPlayerSetTown(lua_State* L)
 		return 1;
 	}
 
-	const Town* town =
-	    g_game.map.towns.getTown(tfs::lua::getField<uint32_t>(L, 2, "id", std::numeric_limits<uint32_t>::max()));
+	const Town* town = g_game.map.towns.getTown(
+		tfs::lua::getField<uint32_t>(L, 2, "id", UINT32_MAX));
 	if (!town) {
 		tfs::lua::pushBoolean(L, false);
 		return 1;
@@ -15550,7 +15545,6 @@ int LuaScriptInterface::luaMonsterTypeBestiaryInfo(lua_State* L)
 		    .occurrence = tfs::lua::getField<uint32_t>(L, 2, "occurrence"),
 		    .locations = tfs::lua::getFieldString(L, 2, "locations"),
 		};
-		lua_pop(L, 9);
 
 		if (g_monsters.isValidBestiaryInfo(info)) {
 			monsterType->bestiaryInfo = std::move(info);

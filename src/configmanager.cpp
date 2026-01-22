@@ -108,12 +108,11 @@ std::vector<ExpStage> loadLuaStages(lua_State* L)
 	if (lua_istable(L, -1)) {
 		lua_pushnil(L);
 		while (lua_next(L, -2) != 0) {
-			const auto tableIndex = lua_gettop(L);
-			uint32_t minLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "minlevel", 1);
-			uint32_t maxLevel = tfs::lua::getField<uint32_t>(L, tableIndex, "maxlevel", INT_MAX);
-			float multiplier = tfs::lua::getField<float>(L, tableIndex, "multiplier", 1);
+			uint32_t minLevel = tfs::lua::getField<uint32_t>(L, -1, "minlevel", 1);
+			uint32_t maxLevel = tfs::lua::getField<uint32_t>(L, -1, "maxlevel", INT_MAX);
+			float multiplier = tfs::lua::getField<float>(L, -1, "multiplier", 1);
 			stages.push_back({minLevel, maxLevel, multiplier});
-			lua_pop(L, 4);
+			lua_pop(L, 1);
 		}
 		lua_pop(L, 1);
 

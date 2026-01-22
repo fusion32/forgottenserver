@@ -391,27 +391,15 @@ public:
 	tradestate_t getTradeState() const { return tradeState; }
 	Item* getTradeItem() { return tradeItem; }
 
-	// shop functions
-	void setShopOwner(Npc* owner, int32_t onBuy, int32_t onSell)
-	{
-		shopOwner = owner;
-		purchaseCallback = onBuy;
-		saleCallback = onSell;
-	}
-
-	Npc* getShopOwner(int32_t& onBuy, int32_t& onSell)
-	{
-		onBuy = purchaseCallback;
-		onSell = saleCallback;
-		return shopOwner;
-	}
-
-	const Npc* getShopOwner(int32_t& onBuy, int32_t& onSell) const
-	{
-		onBuy = purchaseCallback;
-		onSell = saleCallback;
-		return shopOwner;
-	}
+	// npc functions
+	// TODO(fusion): We could probably get support multiple interacting npcs.
+	Npc *getInteractingNpc(void) const { return interactingNpc; }
+	int32_t getNpcBuyCallback(void) const { return npcBuyCallback; }
+	int32_t getNpcSellCallback(void) const { return npcSellCallback; }
+	void openNpcChannel(Npc *npc, const std::vector<NpcInteraction> &interactions);
+	bool closeNpcChannel(Npc *npc);
+	void startNpcTrade(Npc *npc, std::list<ShopInfo> &&items, int32_t onBuy, int32_t onSell);
+	void endNpcTrade(Npc *npc);
 
 	// V.I.P. functions
 	void notifyStatusChange(Player* loginPlayer, VipStatus_t status);
@@ -433,8 +421,6 @@ public:
 	void onWalkComplete() override;
 
 	void stopWalk();
-	void openShopWindow(Npc* npc, const std::list<ShopInfo>& shop);
-	bool closeShopWindow(bool sendCloseShopWindow = true);
 	bool updateSaleShopList(const Item* item);
 	bool hasShopItemForSale(uint32_t itemId, uint8_t subType) const;
 
@@ -952,22 +938,10 @@ public:
 			SendToChannel(connection, creature, type, text, channelId);
 		}
 	}
-	void sendShop(Npc* npc) const
-	{
-		if (connection) {
-			SendShop(connection, npc, shopItemList);
-		}
-	}
 	void sendSaleItemList() const
 	{
 		if (connection) {
 			SendSaleItemList(connection, shopItemList);
-		}
-	}
-	void sendCloseShop() const
-	{
-		if (connection) {
-			SendCloseShop(connection);
 		}
 	}
 	void sendMarketEnter() const
@@ -1251,7 +1225,7 @@ public:
 	Item* inventory[CONST_SLOT_LAST + 1] = {};
 	Item* writeItem = nullptr;
 	House* editHouse = nullptr;
-	Npc* shopOwner = nullptr;
+	Npc *interactingNpc = nullptr;
 	Party* party = nullptr;
 	Player* tradePartner = nullptr;
 	SchedulerTask* walkTask = nullptr;
@@ -1283,8 +1257,8 @@ public:
 	int32_t varSpecialSkills[SPECIALSKILL_LAST + 1] = {};
 	int32_t varStats[STAT_LAST + 1] = {};
 	std::array<int16_t, COMBAT_COUNT> specialMagicLevelSkill = {0};
-	int32_t purchaseCallback = -1;
-	int32_t saleCallback = -1;
+	int32_t npcBuyCallback = -1;
+	int32_t npcSellCallback = -1;
 	int32_t MessageBufferCount = 0;
 	int32_t bloodHitCount = 0;
 	int32_t shieldBlockCount = 0;
@@ -1319,6 +1293,7 @@ public:
 	bool addAttackSkillPoint = false;
 	bool inventoryAbilities[CONST_SLOT_LAST + 1] = {};
 	bool randomizeMount = false;
+	bool tradingWithNpc = false;
 
 	static uint32_t playerAutoID;
 	static uint32_t playerIDLimit;

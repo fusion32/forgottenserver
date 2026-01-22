@@ -1342,7 +1342,7 @@ void Player::onRemoveCreature(Creature* creature, bool isLogout)
 			g_game.internalCloseTrade(this);
 		}
 
-		closeShopWindow();
+		closeNpcChannel(interactingNpc);
 
 		clearPartyInvitations();
 
@@ -1379,34 +1379,72 @@ void Player::onRemoveCreature(Creature* creature, bool isLogout)
 	}
 }
 
-void Player::openShopWindow(Npc* npc, const std::list<ShopInfo>& shop)
-{
-	shopItemList = shop;
-	sendShop(npc);
-	sendSaleItemList();
+void Player::openNpcChannel(Npc *npc, const std::vector<NpcInteraction> &interactions){
+	if(interactingNpc){
+		if(interactingNpc == npc){
+			return;
+		}
+
+		closeNpcChannel(interactingNpc);
+	}
+
+	assert(!interactingNpc);
+	interactingNpc = npc;
+	if(npc){
+		npc->addInteractingPlayer(this);
+		if(connection){
+			SendNpcChannel(connection, npc, interactions);
+		}
+	}
 }
 
-bool Player::closeShopWindow(bool sendCloseShopWindow /*= true*/)
-{
-	// unreference callbacks
-	int32_t onBuy;
-	int32_t onSell;
-
-	Npc* npc = getShopOwner(onBuy, onSell);
-	if (!npc) {
-		shopItemList.clear();
+bool Player::closeNpcChannel(Npc *npc){
+	if(!interactingNpc || interactingNpc != npc){
 		return false;
 	}
 
-	setShopOwner(nullptr, -1, -1);
-	npc->onPlayerEndTrade(this, onBuy, onSell);
-
-	if (sendCloseShopWindow) {
-		sendCloseShop();
+	if(tradingWithNpc){
+		endNpcTrade(interactingNpc);
 	}
 
-	shopItemList.clear();
+	interactingNpc = NULL;
+	npc->remInteractingPlayer(this);
+	npc->onPlayerCloseChannel(this);
+
+	if(connection){
+		SendCloseNpcChannel(connection);
+	}
+
 	return true;
+}
+
+void Player::startNpcTrade(Npc *npc, std::list<ShopInfo> &&items, int32_t onBuy, int32_t onSell){
+	if(interactingNpc && interactingNpc == npc && !tradingWithNpc){
+		tradingWithNpc = true;
+		shopItemList = std::move(items);
+		npcBuyCallback = onBuy;
+		npcSellCallback = onSell;
+
+		if(connection){
+			SendShop(connection, npc, shopItemList);
+			SendSaleItemList(connection, shopItemList);
+		}
+	}
+}
+
+void Player::endNpcTrade(Npc *npc){
+	if(interactingNpc && interactingNpc == npc && tradingWithNpc){
+		tradingWithNpc = false;
+		shopItemList.clear();
+		npc->onPlayerEndTrade(this);
+		npc->releaseTradeCallbacks(npcBuyCallback, npcSellCallback);
+		npcBuyCallback = -1;
+		npcSellCallback = -1;
+
+		if(connection){
+			SendCloseNpcTrade(connection);
+		}
+	}
 }
 
 void Player::onWalk(Direction& dir)
@@ -3205,7 +3243,7 @@ void Player::postAddNotification(Thing* thing, const Thing* oldParent, int32_t i
 			onSendContainer(container);
 		}
 
-		if (shopOwner && requireListUpdate) {
+		if (interactingNpc && tradingWithNpc && requireListUpdate) {
 			updateSaleShopList(item);
 		}
 	} else if (const Creature* creature = thing->getCreature()) {
@@ -3297,7 +3335,7 @@ void Player::postRemoveNotification(Thing* thing, const Thing* newParent, int32_
 			}
 		}
 
-		if (shopOwner && requireListUpdate) {
+		if (interactingNpc && tradingWithNpc && requireListUpdate) {
 			updateSaleShopList(item);
 		}
 	}
@@ -3330,9 +3368,7 @@ bool Player::updateSaleShopList(const Item* item)
 		}
 	}
 
-	if (connection) {
-		SendSaleItemList(connection, shopItemList);
-	}
+	sendSaleItemList();
 	return true;
 }
 

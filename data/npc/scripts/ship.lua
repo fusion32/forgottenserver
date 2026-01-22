@@ -6,6 +6,7 @@ function onCreatureAppear(cid)				npcHandler:onCreatureAppear(cid)			end
 function onCreatureDisappear(cid)			npcHandler:onCreatureDisappear(cid)			end
 function onCreatureSay(cid, type, msg)		npcHandler:onCreatureSay(cid, type, msg)	end
 function onThink()							npcHandler:onThink()						end
+function onPlayerCloseChannel(cid)			npcHandler:onPlayerCloseChannel(cid)		end
 
 keywordHandler:addKeyword({'captain'}, StdModule.say, {npcHandler = npcHandler, text = 'I am the captain of this sailing-ship.'})
 keywordHandler:addKeyword({'trip'}, StdModule.say, {npcHandler = npcHandler, text = 'Where do you want to go? To Trekolt, Rhyves, Varak or Saund?'})

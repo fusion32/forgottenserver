@@ -214,7 +214,7 @@ if not NpcHandler then
 		end
 
 		if Player(focus) then
-			closeShopWindow(focus) --Even if it can not exist, we need to prevent it.
+			closeNpcChannel(focus)
 			self:updateFocus()
 		end
 	end
@@ -336,6 +336,14 @@ if not NpcHandler then
 	-- Greets a new player.
 	function NpcHandler:greet(cid)
 		if cid ~= 0 then
+			-- TODO: Custom interactions?
+			openNpcChannel(cid,
+				{
+					{icon = NPC_INTERACTION_YES, text = "yes"},
+					{icon = NPC_INTERACTION_NO,  text = "no"},
+					{icon = NPC_INTERACTION_BYE, text = "bye"},
+				})
+
 			local callback = self:getCallback(CALLBACK_GREET)
 			if not callback or callback(cid) then
 				if self:processModuleCallback(CALLBACK_GREET, cid) then

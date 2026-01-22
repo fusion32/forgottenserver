@@ -2025,8 +2025,7 @@ void Game::playerMoveThing(Player *player, const Position& fromPos, uint16_t spr
 
 void Game::playerLookInShop(Player *player, uint16_t spriteId, uint8_t count)
 {
-	int32_t onBuy, onSell;
-	Npc* merchant = player->getShopOwner(onBuy, onSell);
+	Npc* merchant = player->getInteractingNpc();
 	if (!merchant) {
 		return;
 	}
@@ -2057,9 +2056,8 @@ void Game::playerPurchaseItem(Player *player, uint16_t spriteId, uint8_t count, 
 		return;
 	}
 
-	int32_t onBuy, onSell;
-	Npc* merchant = player->getShopOwner(onBuy, onSell);
-	if (!merchant) {
+	Npc *merchant = player->getInteractingNpc();
+	if(!merchant){
 		return;
 	}
 
@@ -2079,7 +2077,8 @@ void Game::playerPurchaseItem(Player *player, uint16_t spriteId, uint8_t count, 
 		return;
 	}
 
-	merchant->onPlayerTrade(player, onBuy, it.id, subType, amount, ignoreCap, inBackpacks);
+	merchant->onPlayerTrade(player, player->getNpcBuyCallback(),
+					it.id, subType, amount, ignoreCap, inBackpacks);
 }
 
 void Game::playerSellItem(Player *player, uint16_t spriteId, uint8_t count, uint16_t amount, bool ignoreEquipped)
@@ -2088,8 +2087,7 @@ void Game::playerSellItem(Player *player, uint16_t spriteId, uint8_t count, uint
 		return;
 	}
 
-	int32_t onBuy, onSell;
-	Npc* merchant = player->getShopOwner(onBuy, onSell);
+	Npc* merchant = player->getInteractingNpc();
 	if (!merchant) {
 		return;
 	}
@@ -2106,12 +2104,13 @@ void Game::playerSellItem(Player *player, uint16_t spriteId, uint8_t count, uint
 		subType = count;
 	}
 
-	merchant->onPlayerTrade(player, onSell, it.id, subType, amount, ignoreEquipped);
+	merchant->onPlayerTrade(player, player->getNpcSellCallback(),
+					it.id, subType, amount, ignoreEquipped);
 }
 
-void Game::playerCloseShop(Player *player)
+void Game::playerCloseNpcTrade(Player *player)
 {
-	player->closeShopWindow();
+	player->endNpcTrade(player->getInteractingNpc());
 }
 
 void Game::playerRequestTrade(Player *player, const Position& pos, uint8_t stackPos, uint32_t tradePlayerId,
@@ -3224,13 +3223,9 @@ void Game::playerOpenPrivateChannel(Player *player, std::string receiver)
 
 void Game::playerCloseNpcChannel(Player *player)
 {
-	SpectatorVec spectators;
-	map.getSpectators(spectators, player->getPosition());
-	for (Creature* spectator : spectators) {
-		if (Npc* npc = spectator->getNpc()) {
-			npc->onPlayerCloseChannel(player);
-		}
-	}
+	// TODO(fusion): We might want to review this if we implement multiple
+	// interacting NPCs.
+	player->closeNpcChannel(player->getInteractingNpc());
 }
 
 void Game::playerSetFightModes(Player *player, fightMode_t fightMode, bool chaseMode, bool secureMode)

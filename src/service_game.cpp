@@ -1162,7 +1162,32 @@ void SendEmptyContainer(const GameConnection_ptr &connection, uint8_t cid){
     WriteToOutputBuffer(connection, msg);
 }
 
-void SendShop(const GameConnection_ptr &connection, Npc* npc, const ShopInfoList& itemList){
+void SendNpcChannel(const GameConnection_ptr &connection, Npc *npc,
+                    const std::vector<NpcInteraction> &interactions){
+    NetworkMessage msg;
+    msg.addByte(0x1C);
+    msg.addByte(0x00); // open ?
+    msg.addByte(0x01); // ?
+    msg.add<uint32_t>(npc->getID());
+
+    assert(interactions.size() <= UINT8_MAX);
+    msg.addByte((uint8_t)interactions.size());
+    for(const NpcInteraction &interaction: interactions){
+        msg.addByte(interaction.icon);
+        msg.addString(interaction.text);
+    }
+
+    WriteToOutputBuffer(connection, msg);
+}
+
+void SendCloseNpcChannel(const GameConnection_ptr &connection){
+    NetworkMessage msg;
+    msg.addByte(0x1C);
+    msg.addByte(0x01); // close ?
+    WriteToOutputBuffer(connection, msg);
+}
+
+void SendShop(const GameConnection_ptr &connection, Npc* npc, const std::list<ShopInfo> &itemList){
     NetworkMessage msg;
     msg.addByte(0x7A);
     msg.addString(npc->getName());
@@ -1192,12 +1217,6 @@ void SendShop(const GameConnection_ptr &connection, Npc* npc, const ShopInfoList
         msg.add<uint32_t>(std::max<uint32_t>(item->sellPrice, 0));
     }
 
-    WriteToOutputBuffer(connection, msg);
-}
-
-void SendCloseShop(const GameConnection_ptr &connection){
-    NetworkMessage msg;
-    msg.addByte(0x7C);
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -1273,8 +1292,8 @@ void SendSaleItemList(const GameConnection_ptr &connection, const std::list<Shop
         }
     }
 
-    uint8_t itemsToSend = std::min<size_t>(saleMap.size(), std::numeric_limits<uint8_t>::max());
-    msg.addByte(itemsToSend);
+    uint16_t itemsToSend = std::min<size_t>(saleMap.size(), UINT16_MAX);
+    msg.add<uint16_t>(itemsToSend);
 
     uint8_t i = 0;
     for (std::map<uint16_t, uint32_t>::const_iterator it = saleMap.begin(); i < itemsToSend; ++it, ++i) {
@@ -1282,6 +1301,12 @@ void SendSaleItemList(const GameConnection_ptr &connection, const std::list<Shop
         msg.add<uint16_t>(std::min<uint16_t>(it->second, std::numeric_limits<uint16_t>::max()));
     }
 
+    WriteToOutputBuffer(connection, msg);
+}
+
+void SendCloseNpcTrade(const GameConnection_ptr &connection){
+    NetworkMessage msg;
+    msg.addByte(0x7C);
     WriteToOutputBuffer(connection, msg);
 }
 
@@ -2777,9 +2802,9 @@ static void ParsePlayerSale(const GameConnection_ptr &connection, NetworkMessage
     g_game.playerSellItem(connection->player, id, count, amount, ignoreEquipped);
 }
 
-static void ParseCloseShop(const GameConnection_ptr &connection, NetworkMessage &input){
+static void ParseCloseNpcTrade(const GameConnection_ptr &connection, NetworkMessage &input){
     (void)input;
-    g_game.playerCloseShop(connection->player);
+    g_game.playerCloseNpcTrade(connection->player);
 }
 
 static void ParseRequestTrade(const GameConnection_ptr &connection, NetworkMessage &input){
@@ -3281,7 +3306,7 @@ static void ParsePacket(const GameConnection_ptr &connection, const std::vector<
             case 0x79: ParseLookInShop(connection, input); break;
             case 0x7A: ParsePlayerPurchase(connection, input); break;
             case 0x7B: ParsePlayerSale(connection, input); break;
-            case 0x7C: ParseCloseShop(connection, input); break;
+            case 0x7C: ParseCloseNpcTrade(connection, input); break;
             case 0x7D: ParseRequestTrade(connection, input); break;
             case 0x7E: ParseLookInTrade(connection, input); break;
             case 0x7F: ParseAcceptTrade(connection, input); break;
@@ -3677,9 +3702,11 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
         co_return false;
     }
 
-    // NOTE(fusion): The client will send PONGs with SEQ=0 for whatever reason. If
-    // we don't filter those out, we'll end up dropping the connection by accident,
-    // but accepting every packet with SEQ=0 is probably not a good idea.
+    // NOTE(fusion): The client will send this lone 0x1C message with SEQ=0 for
+    // whatever reason. If we don't filter those out, we'll end up dropping the
+    // connection by accident, but accepting every packet with SEQ=0 is probably
+    // not a good idea. I'm also not exactly sure what is this packet used for,
+    // but it always precedes a client PONG (0x1E) so idk.
     if((sequence & 0x3FFFFFFF) != (connection->clientSequence & 0x3FFFFFFF)){
         bool isClientPong = (sequence == 0
                 && input.getRemainingLength() == 1

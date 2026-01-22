@@ -35,16 +35,20 @@ private:
 	static int luaSetNpcFocus(lua_State* L);
 	static int luaGetNpcCid(lua_State* L);
 	static int luaGetNpcParameter(lua_State* L);
-	static int luaOpenShopWindow(lua_State* L);
-	static int luaCloseShopWindow(lua_State* L);
+	static int luaOpenNpcChannel(lua_State* L);
+	static int luaCloseNpcChannel(lua_State* L);
+	static int luaStartNpcTrade(lua_State* L);
+	static int luaEndNpcTrade(lua_State* L);
 	static int luaDoSellItem(lua_State* L);
 
 	// metatable
 	static int luaNpcGetParameter(lua_State* L);
 	static int luaNpcSetFocus(lua_State* L);
 
-	static int luaNpcOpenShopWindow(lua_State* L);
-	static int luaNpcCloseShopWindow(lua_State* L);
+	static int luaNpcOpenChannel(lua_State* L);
+	static int luaNpcCloseChannel(lua_State* L);
+	static int luaNpcStartTrade(lua_State* L);
+	static int luaNpcEndTrade(lua_State* L);
 
 private:
 	bool initState() override;
@@ -64,8 +68,8 @@ public:
 	void onCreatureSay(Creature* creature, SpeakClasses, const std::string& text);
 	void onPlayerTrade(Player* player, int32_t callback, uint16_t itemId, uint8_t count, uint16_t amount,
 	                   bool ignore = false, bool inBackpacks = false);
+	void onPlayerEndTrade(Player *player);
 	void onPlayerCloseChannel(Player* player);
-	void onPlayerEndTrade(Player* player);
 	void onThink();
 
 	bool isLoaded() const;
@@ -79,8 +83,8 @@ private:
 	int32_t creatureDisappearEvent = -1;
 	int32_t creatureMoveEvent = -1;
 	int32_t creatureSayEvent = -1;
-	int32_t playerCloseChannelEvent = -1;
 	int32_t playerEndTradeEvent = -1;
+	int32_t playerCloseChannelEvent = -1;
 	int32_t thinkEvent = -1;
 	bool loaded = false;
 };
@@ -142,13 +146,18 @@ public:
 		}
 	}
 
-	void onPlayerCloseChannel(Player* player);
 	void onPlayerTrade(Player* player, int32_t callback, uint16_t itemId, uint8_t count, uint16_t amount,
 	                   bool ignore = false, bool inBackpacks = false);
-	void onPlayerEndTrade(Player* player, int32_t buyCallback, int32_t sellCallback);
+	void onPlayerEndTrade(Player *player);
+	void onPlayerCloseChannel(Player* player);
+	void releaseTradeCallbacks(int32_t buyCallback, int32_t sellCallback);
 
 	void turnToCreature(Creature* creature);
 	void setCreatureFocus(Creature* creature);
+
+	void addInteractingPlayer(Player *player) { interactingPlayers.insert(player); }
+	void remInteractingPlayer(Player *player) { interactingPlayers.erase(player); }
+	void closeOpenChannels();
 
 	auto& getScriptInterface() { return npcEventHandler->scriptInterface; }
 
@@ -183,13 +192,9 @@ private:
 	void reset();
 	bool loadFromXml();
 
-	void addShopPlayer(Player* player);
-	void removeShopPlayer(Player* player);
-	void closeAllShopWindows();
-
 	std::map<std::string, std::string> parameters;
 
-	std::set<Player*> shopPlayerSet;
+	std::set<Player*> interactingPlayers;
 	std::set<Player*> spectators;
 
 	std::string name;

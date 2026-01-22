@@ -1254,8 +1254,10 @@ function selfFollow(creature) end
 function getDistanceTo(creature) end
 function doNpcSetCreatureFocus(creature) end
 function getNpcParameter(key) end
-function openShopWindow(shopWindow) end
-function closeShopWindow() end
+function openNpcChannel(...) end
+function closeNpcChannel(...) end
+function startNpcTrade(...) end
+function endNpcTrade(...) end
 function doSellItem(item) end
 
 storages = {}

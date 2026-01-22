@@ -64,9 +64,12 @@ void SendIcons(const GameConnection_ptr &connection, uint32_t icons);
 void SendContainer(const GameConnection_ptr &connection, uint8_t cid,
                    const Container* container, uint16_t firstIndex);
 void SendEmptyContainer(const GameConnection_ptr &connection, uint8_t cid);
-void SendShop(const GameConnection_ptr &connection, Npc* npc, const ShopInfoList& itemList);
-void SendCloseShop(const GameConnection_ptr &connection);
+void SendNpcChannel(const GameConnection_ptr &connection, Npc* npc,
+                    const std::vector<NpcInteraction> &interactions);
+void SendCloseNpcChannel(const GameConnection_ptr &connection);
+void SendShop(const GameConnection_ptr &connection, Npc* npc, const std::list<ShopInfo> &itemList);
 void SendSaleItemList(const GameConnection_ptr &connection, const std::list<ShopInfo>& shop);
+void SendCloseNpcTrade(const GameConnection_ptr &connection);
 void SendResourceBalance(const GameConnection_ptr &connection, const ResourceTypes_t resourceType, uint64_t amount);
 void SendStoreBalance(const GameConnection_ptr &connection);
 void SendMarketEnter(const GameConnection_ptr &connection);

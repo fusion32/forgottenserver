@@ -18,7 +18,7 @@ void Npcs::reload()
 {
 	const std::map<uint32_t, Npc*>& npcs = g_game.getNpcs();
 	for (const auto& it : npcs) {
-		it.second->closeAllShopWindows();
+		it.second->closeOpenChannels();
 	}
 
 	for (const auto& it : npcs) {
@@ -73,7 +73,7 @@ void Npc::reset()
 	npcEventHandler.reset();
 
 	parameters.clear();
-	shopPlayerSet.clear();
+	interactingPlayers.clear();
 	spectators.clear();
 }
 
@@ -271,7 +271,7 @@ void Npc::onRemoveCreature(Creature* creature, bool isLogout)
 	Creature::onRemoveCreature(creature, isLogout);
 
 	if (creature == this) {
-		closeAllShopWindows();
+		closeOpenChannels();
 		if (npcEventHandler) {
 			npcEventHandler->onCreatureDisappear(creature);
 		}
@@ -364,7 +364,14 @@ void Npc::onPlayerTrade(Player* player, int32_t callback, uint16_t itemId, uint8
 	player->sendSaleItemList();
 }
 
-void Npc::onPlayerEndTrade(Player* player, int32_t buyCallback, int32_t sellCallback)
+void Npc::onPlayerEndTrade(Player* player)
+{
+	if (npcEventHandler) {
+		npcEventHandler->onPlayerEndTrade(player);
+	}
+}
+
+void Npc::releaseTradeCallbacks(int32_t buyCallback, int32_t sellCallback)
 {
 	lua_State* L = getScriptInterface()->getLuaState();
 
@@ -374,12 +381,6 @@ void Npc::onPlayerEndTrade(Player* player, int32_t buyCallback, int32_t sellCall
 
 	if (sellCallback != -1) {
 		luaL_unref(L, LUA_REGISTRYINDEX, sellCallback);
-	}
-
-	removeShopPlayer(player);
-
-	if (npcEventHandler) {
-		npcEventHandler->onPlayerEndTrade(player);
 	}
 }
 
@@ -512,16 +513,12 @@ void Npc::setCreatureFocus(Creature* creature)
 	}
 }
 
-void Npc::addShopPlayer(Player* player) { shopPlayerSet.insert(player); }
-
-void Npc::removeShopPlayer(Player* player) { shopPlayerSet.erase(player); }
-
-void Npc::closeAllShopWindows()
+void Npc::closeOpenChannels()
 {
-	while (!shopPlayerSet.empty()) {
-		Player* player = *shopPlayerSet.begin();
-		if (!player->closeShopWindow()) {
-			removeShopPlayer(player);
+	while (!interactingPlayers.empty()) {
+		Player* player = *interactingPlayers.begin();
+		if(!player->closeNpcChannel(this)){
+			remInteractingPlayer(player);
 		}
 	}
 }
@@ -581,16 +578,20 @@ void NpcScriptInterface::registerFunctions()
 	lua_register(L, "doNpcSetCreatureFocus", NpcScriptInterface::luaSetNpcFocus);
 	lua_register(L, "getNpcCid", NpcScriptInterface::luaGetNpcCid);
 	lua_register(L, "getNpcParameter", NpcScriptInterface::luaGetNpcParameter);
-	lua_register(L, "openShopWindow", NpcScriptInterface::luaOpenShopWindow);
-	lua_register(L, "closeShopWindow", NpcScriptInterface::luaCloseShopWindow);
+	lua_register(L, "openNpcChannel", NpcScriptInterface::luaOpenNpcChannel);
+	lua_register(L, "closeNpcChannel", NpcScriptInterface::luaCloseNpcChannel);
+	lua_register(L, "startNpcTrade", NpcScriptInterface::luaStartNpcTrade);
+	lua_register(L, "endNpcTrade", NpcScriptInterface::luaEndNpcTrade);
 	lua_register(L, "doSellItem", NpcScriptInterface::luaDoSellItem);
 
 	// metatable
 	tfs::lua::registerMethod(L, "Npc", "getParameter", NpcScriptInterface::luaNpcGetParameter);
 	tfs::lua::registerMethod(L, "Npc", "setFocus", NpcScriptInterface::luaNpcSetFocus);
 
-	tfs::lua::registerMethod(L, "Npc", "openShopWindow", NpcScriptInterface::luaNpcOpenShopWindow);
-	tfs::lua::registerMethod(L, "Npc", "closeShopWindow", NpcScriptInterface::luaNpcCloseShopWindow);
+	tfs::lua::registerMethod(L, "Npc", "openChannel", NpcScriptInterface::luaNpcOpenChannel);
+	tfs::lua::registerMethod(L, "Npc", "closeChannel", NpcScriptInterface::luaNpcCloseChannel);
+	tfs::lua::registerMethod(L, "Npc", "startTrade", NpcScriptInterface::luaNpcStartTrade);
+	tfs::lua::registerMethod(L, "Npc", "endTrade", NpcScriptInterface::luaNpcEndTrade);
 }
 
 int NpcScriptInterface::luaActionSay(lua_State* L)
@@ -756,118 +757,120 @@ int NpcScriptInterface::luaGetNpcParameter(lua_State* L)
 	return 1;
 }
 
-int NpcScriptInterface::luaOpenShopWindow(lua_State* L)
-{
-	// openShopWindow(cid, items, onBuy callback, onSell callback)
-	int32_t sellCallback;
-	if (!lua_isfunction(L, -1)) {
-		sellCallback = -1;
-		lua_pop(L, 1); // skip it - use default value
-	} else {
-		sellCallback = tfs::lua::popCallback(L);
+int NpcScriptInterface::luaOpenNpcChannel(lua_State *L){
+	// openNpcChannel(cid, interactions)
+	Npc *npc = tfs::lua::getScriptEnv()->getNpc();
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
 	}
 
-	int32_t buyCallback;
-	if (!lua_isfunction(L, -1)) {
-		buyCallback = -1;
-		lua_pop(L, 1); // skip it - use default value
-	} else {
-		buyCallback = tfs::lua::popCallback(L);
-	}
-
-	if (!lua_istable(L, -1)) {
-		reportErrorFunc(L, "item list is not a table.");
-		tfs::lua::pushBoolean(L, false);
-		return 1;
-	}
-
-	std::list<ShopInfo> items;
-	lua_pushnil(L);
-	while (lua_next(L, -2) != 0) {
-		const auto tableIndex = lua_gettop(L);
-		ShopInfo item;
-
-		item.itemId = tfs::lua::getField<uint32_t>(L, tableIndex, "id");
-		item.subType = tfs::lua::getField<int32_t>(L, tableIndex, "subType");
-		if (item.subType == 0) {
-			item.subType = tfs::lua::getField<int32_t>(L, tableIndex, "subtype");
-			lua_pop(L, 1);
-		}
-
-		item.buyPrice = tfs::lua::getField<int64_t>(L, tableIndex, "buy");
-		item.sellPrice = tfs::lua::getField<int64_t>(L, tableIndex, "sell");
-		item.realName = tfs::lua::getFieldString(L, tableIndex, "name");
-
-		items.push_back(item);
-		lua_pop(L, 6);
-	}
-	lua_pop(L, 1);
-
-	Player* player = tfs::lua::getPlayer(L, -1);
+	Player *player = tfs::lua::getPlayer(L, 1);
 	if (!player) {
 		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+		return 0;
 	}
 
-	// Close any eventual other shop window currently open.
-	player->closeShopWindow(false);
-
-	Npc* npc = tfs::lua::getScriptEnv()->getNpc();
-	if (!npc) {
-		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+	// get interactions table or use constant?
+	std::vector<NpcInteraction> interactions;
+	if(lua_gettop(L) >= 2 && lua_istable(L, 2)){
+		lua_pushnil(L);
+		while(lua_next(L, 2) != 0){
+			uint8_t icon     = tfs::lua::getField<uint8_t>(L, -1, "icon");
+			std::string text = tfs::lua::getFieldString(L, -1, "text");
+			interactions.push_back({icon, std::move(text)});
+			lua_pop(L, 1);
+		}
 	}
 
-	npc->addShopPlayer(player);
-	player->setShopOwner(npc, buyCallback, sellCallback);
-	player->openShopWindow(npc, items);
-
-	tfs::lua::pushBoolean(L, true);
-	return 1;
+	player->openNpcChannel(npc, interactions);
+	return 0;
 }
 
-int NpcScriptInterface::luaCloseShopWindow(lua_State* L)
+int NpcScriptInterface::luaCloseNpcChannel(lua_State *L){
+	// closeNpcChannel(cid)
+	Npc *npc = tfs::lua::getScriptEnv()->getNpc();
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
+	}
+
+	Player *player = tfs::lua::getPlayer(L, 1);
+	if (!player) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		return 0;
+	}
+
+	player->closeNpcChannel(npc);
+	return 0;
+}
+
+int NpcScriptInterface::luaStartNpcTrade(lua_State* L)
 {
-	// closeShopWindow(cid)
+	// startNpcTrade(cid, items, onBuy callback, onSell callback)
 	Npc* npc = tfs::lua::getScriptEnv()->getNpc();
 	if (!npc) {
 		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+		return 0;
 	}
 
 	Player* player = tfs::lua::getPlayer(L, 1);
 	if (!player) {
 		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+		return 0;
 	}
 
-	int32_t buyCallback;
-	int32_t sellCallback;
-
-	Npc* merchant = player->getShopOwner(buyCallback, sellCallback);
-
-	// Check if we actually have a shop window with this player.
-	if (merchant == npc) {
-		player->sendCloseShop();
-
-		if (buyCallback != -1) {
-			luaL_unref(L, LUA_REGISTRYINDEX, buyCallback);
-		}
-
-		if (sellCallback != -1) {
-			luaL_unref(L, LUA_REGISTRYINDEX, sellCallback);
-		}
-
-		player->setShopOwner(nullptr, -1, -1);
-		npc->removeShopPlayer(player);
+	if (!lua_istable(L, 2)) {
+		reportErrorFunc(L, "item list is not a table.");
+		return 0;
 	}
 
-	tfs::lua::pushBoolean(L, true);
-	return 1;
+	std::list<ShopInfo> items;
+	lua_pushnil(L);
+	while (lua_next(L, 2) != 0) {
+		ShopInfo item;
+		item.itemId = tfs::lua::getField<uint32_t>(L, -1, "id");
+		item.subType = tfs::lua::getField<int32_t>(L, -1, "subType");
+		if (item.subType == 0) {
+			item.subType = tfs::lua::getField<int32_t>(L, -1, "subtype");
+		}
+		item.buyPrice = tfs::lua::getField<int64_t>(L, -1, "buy");
+		item.sellPrice = tfs::lua::getField<int64_t>(L, -1, "sell");
+		item.realName = tfs::lua::getFieldString(L, -1, "name");
+		items.push_back(item);
+		lua_pop(L, 1);
+	}
+
+	int32_t buyCallback = -1;
+	if (lua_isfunction(L, 3)) {
+		buyCallback = luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+
+	int32_t sellCallback = -1;
+	if (lua_isfunction(L, 4)) {
+		sellCallback = luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+
+	player->startNpcTrade(npc, std::move(items), buyCallback, sellCallback);
+	return 0;
+}
+
+int NpcScriptInterface::luaEndNpcTrade(lua_State *L){
+	// endNpcTrade(cid)
+	Npc *npc = tfs::lua::getScriptEnv()->getNpc();
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
+	}
+
+	Player *player = tfs::lua::getPlayer(L, 1);
+	if (!player) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		return 0;
+	}
+
+	player->endNpcTrade(npc);
+	return 0;
 }
 
 int NpcScriptInterface::luaDoSellItem(lua_State* L)
@@ -967,32 +970,88 @@ int NpcScriptInterface::luaNpcSetFocus(lua_State* L)
 	return 1;
 }
 
-int NpcScriptInterface::luaNpcOpenShopWindow(lua_State* L)
+int NpcScriptInterface::luaNpcOpenChannel(lua_State *L){
+	// npc:openChannel(cid, interactions)
+	Npc* npc = tfs::lua::getUserdata<Npc>(L, 1);
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
+	}
+
+	Player *player = tfs::lua::getPlayer(L, 2);
+	if (!player) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		return 0;
+	}
+
+	// get interactions table or use constant?
+	std::vector<NpcInteraction> interactions;
+	if(lua_gettop(L) >= 3 && lua_istable(L, 3)){
+		lua_pushnil(L);
+		while(lua_next(L, 3) != 0){
+			uint8_t icon     = tfs::lua::getField<uint8_t>(L, -1, "icon");
+			std::string text = tfs::lua::getFieldString(L, -1, "text");
+			interactions.push_back({icon, std::move(text)});
+			lua_pop(L, 1);
+		}
+	}
+
+	player->openNpcChannel(npc, interactions);
+	return 0;
+}
+
+int NpcScriptInterface::luaNpcCloseChannel(lua_State *L){
+	// npc:closeChannel(cid)
+	Npc* npc = tfs::lua::getUserdata<Npc>(L, 1);
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
+	}
+
+	Player *player = tfs::lua::getPlayer(L, 2);
+	if (!player) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		return 0;
+	}
+
+	player->closeNpcChannel(npc);
+	return 0;
+}
+
+int NpcScriptInterface::luaNpcStartTrade(lua_State* L)
 {
-	// npc:openShopWindow(cid, items, buyCallback, sellCallback)
-	if (!lua_istable(L, 3)) {
-		reportErrorFunc(L, "item list is not a table.");
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+	// npc:startTrade(cid, items, buyCallback, sellCallback)
+	Npc* npc = tfs::lua::getUserdata<Npc>(L, 1);
+	if (!npc) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
+		return 0;
 	}
 
 	Player* player = tfs::lua::getPlayer(L, 2);
 	if (!player) {
 		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+		return 0;
 	}
 
-	Npc* npc = tfs::lua::getUserdata<Npc>(L, 1);
-	if (!npc) {
-		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+	if (!lua_istable(L, 3)) {
+		reportErrorFunc(L, "item list is not a table.");
+		return 0;
 	}
 
-	int32_t sellCallback = -1;
-	if (lua_isfunction(L, 5)) {
-		sellCallback = luaL_ref(L, LUA_REGISTRYINDEX);
+	std::list<ShopInfo> items;
+	lua_pushnil(L);
+	while (lua_next(L, 3) != 0) {
+		ShopInfo item;
+		item.itemId = tfs::lua::getField<uint32_t>(L, -1, "id");
+		item.subType = tfs::lua::getField<int32_t>(L, -1, "subType");
+		if (item.subType == 0) {
+			item.subType = tfs::lua::getField<int32_t>(L, -1, "subtype");
+		}
+		item.buyPrice = tfs::lua::getField<int64_t>(L, -1, "buy");
+		item.sellPrice = tfs::lua::getField<int64_t>(L, -1, "sell");
+		item.realName = tfs::lua::getFieldString(L, -1, "name");
+		items.push_back(item);
+		lua_pop(L, 1);
 	}
 
 	int32_t buyCallback = -1;
@@ -1000,76 +1059,31 @@ int NpcScriptInterface::luaNpcOpenShopWindow(lua_State* L)
 		buyCallback = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 
-	std::list<ShopInfo> items;
-
-	lua_pushnil(L);
-	while (lua_next(L, 3) != 0) {
-		const auto tableIndex = lua_gettop(L);
-		ShopInfo item;
-
-		item.itemId = tfs::lua::getField<uint32_t>(L, tableIndex, "id");
-		item.subType = tfs::lua::getField<int32_t>(L, tableIndex, "subType");
-		if (item.subType == 0) {
-			item.subType = tfs::lua::getField<int32_t>(L, tableIndex, "subtype");
-			lua_pop(L, 1);
-		}
-
-		item.buyPrice = tfs::lua::getField<int64_t>(L, tableIndex, "buy");
-		item.sellPrice = tfs::lua::getField<int64_t>(L, tableIndex, "sell");
-		item.realName = tfs::lua::getFieldString(L, tableIndex, "name");
-
-		items.push_back(item);
-		lua_pop(L, 6);
+	int32_t sellCallback = -1;
+	if (lua_isfunction(L, 5)) {
+		sellCallback = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
-	lua_pop(L, 1);
 
-	player->closeShopWindow(false);
-	npc->addShopPlayer(player);
-
-	player->setShopOwner(npc, buyCallback, sellCallback);
-	player->openShopWindow(npc, items);
-
-	tfs::lua::pushBoolean(L, true);
-	return 1;
+	player->startNpcTrade(npc, std::move(items), buyCallback, sellCallback);
+	return 0;
 }
 
-int NpcScriptInterface::luaNpcCloseShopWindow(lua_State* L)
-{
-	// npc:closeShopWindow(player)
-	Player* player = tfs::lua::getPlayer(L, 2);
-	if (!player) {
-		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
-	}
-
+int NpcScriptInterface::luaNpcEndTrade(lua_State *L){
+	// npc:endTrade(cid)
 	Npc* npc = tfs::lua::getUserdata<Npc>(L, 1);
 	if (!npc) {
 		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_CREATURE_NOT_FOUND));
-		tfs::lua::pushBoolean(L, false);
-		return 1;
+		return 0;
 	}
 
-	int32_t buyCallback;
-	int32_t sellCallback;
-
-	Npc* merchant = player->getShopOwner(buyCallback, sellCallback);
-	if (merchant == npc) {
-		player->sendCloseShop();
-		if (buyCallback != -1) {
-			luaL_unref(L, LUA_REGISTRYINDEX, buyCallback);
-		}
-
-		if (sellCallback != -1) {
-			luaL_unref(L, LUA_REGISTRYINDEX, sellCallback);
-		}
-
-		player->setShopOwner(nullptr, -1, -1);
-		npc->removeShopPlayer(player);
+	Player *player = tfs::lua::getPlayer(L, 2);
+	if (!player) {
+		reportErrorFunc(L, tfs::lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		return 0;
 	}
 
-	tfs::lua::pushBoolean(L, true);
-	return 1;
+	player->endNpcTrade(npc);
+	return 0;
 }
 
 NpcEventsHandler::NpcEventsHandler(const std::string& file, Npc* npc) :
@@ -1090,8 +1104,8 @@ NpcEventsHandler::NpcEventsHandler(const std::string& file, Npc* npc) :
 		creatureDisappearEvent = scriptInterface->getEvent("onCreatureDisappear");
 		creatureAppearEvent = scriptInterface->getEvent("onCreatureAppear");
 		creatureMoveEvent = scriptInterface->getEvent("onCreatureMove");
-		playerCloseChannelEvent = scriptInterface->getEvent("onPlayerCloseChannel");
 		playerEndTradeEvent = scriptInterface->getEvent("onPlayerEndTrade");
+		playerCloseChannelEvent = scriptInterface->getEvent("onPlayerCloseChannel");
 		thinkEvent = scriptInterface->getEvent("onThink");
 	}
 }
@@ -1223,29 +1237,6 @@ void NpcEventsHandler::onPlayerTrade(Player* player, int32_t callback, uint16_t 
 	scriptInterface->callFunction(6);
 }
 
-void NpcEventsHandler::onPlayerCloseChannel(Player* player)
-{
-	if (playerCloseChannelEvent == -1) {
-		return;
-	}
-
-	// onPlayerCloseChannel(player)
-	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - NpcScript::onPlayerCloseChannel] Call stack overflow" << std::endl;
-		return;
-	}
-
-	ScriptEnvironment* env = tfs::lua::getScriptEnv();
-	env->setScriptId(playerCloseChannelEvent, scriptInterface.get());
-	env->setNpc(npc);
-
-	lua_State* L = scriptInterface->getLuaState();
-	scriptInterface->pushFunction(playerCloseChannelEvent);
-	tfs::lua::pushUserdata(L, player);
-	tfs::lua::setMetatable(L, -1, "Player");
-	scriptInterface->callFunction(1);
-}
-
 void NpcEventsHandler::onPlayerEndTrade(Player* player)
 {
 	if (playerEndTradeEvent == -1) {
@@ -1264,6 +1255,29 @@ void NpcEventsHandler::onPlayerEndTrade(Player* player)
 
 	lua_State* L = scriptInterface->getLuaState();
 	scriptInterface->pushFunction(playerEndTradeEvent);
+	tfs::lua::pushUserdata(L, player);
+	tfs::lua::setMetatable(L, -1, "Player");
+	scriptInterface->callFunction(1);
+}
+
+void NpcEventsHandler::onPlayerCloseChannel(Player* player)
+{
+	if (playerCloseChannelEvent == -1) {
+		return;
+	}
+
+	// onPlayerCloseChannel(player)
+	if (!tfs::lua::reserveScriptEnv()) {
+		std::cout << "[Error - NpcScript::onPlayerCloseChannel] Call stack overflow" << std::endl;
+		return;
+	}
+
+	ScriptEnvironment* env = tfs::lua::getScriptEnv();
+	env->setScriptId(playerCloseChannelEvent, scriptInterface.get());
+	env->setNpc(npc);
+
+	lua_State* L = scriptInterface->getLuaState();
+	scriptInterface->pushFunction(playerCloseChannelEvent);
 	tfs::lua::pushUserdata(L, player);
 	tfs::lua::setMetatable(L, -1, "Player");
 	scriptInterface->callFunction(1);
