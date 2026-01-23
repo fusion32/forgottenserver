@@ -25,6 +25,7 @@
 #include "outfit.h"
 #include "party.h"
 #include "podium.h"
+#include "service_status.h"
 #include "scheduler.h"
 #include "script.h"
 #include "spectators.h"
@@ -62,11 +63,16 @@ Game::Game()
 void Game::start()
 {
 	startTime = OTSYS_TIME();
-	g_scheduler.addEvent(createSchedulerTask(EVENT_CREATURE_THINK_INTERVAL, [this] { checkCreatures(0); }));
-	g_scheduler.addEvent(
-	    createSchedulerTask(getNumber(ConfigManager::PATHFINDING_INTERVAL), [this] { updateCreaturesPath(0); }));
-	g_scheduler.addEvent(createSchedulerTask(EVENT_DECAYINTERVAL, [this] { checkDecay(); }));
-	// TODO(fusion): Add task to update status string every X seconds.
+
+	// NOTE(fusion): Each of these will schedule themselves on a set timer so we
+	// only need to execute them ONCE to start the chain.
+	g_dispatcher.addTask(
+		[this]{
+			checkCreatures(0);
+			updateCreaturesPath(0);
+			checkDecay();
+			updateStatusString();
+		});
 }
 
 GameState_t Game::getGameState() const { return gameState; }
@@ -4241,7 +4247,7 @@ void Game::removeCreatureCheck(Creature* creature)
 void Game::checkCreatures(size_t index)
 {
 	g_scheduler.addEvent(createSchedulerTask(EVENT_CHECK_CREATURE_INTERVAL,
-	                                         [=, this] { checkCreatures((index + 1) % EVENT_CREATURECOUNT); }));
+			[=, this] { checkCreatures((index + 1) % EVENT_CREATURECOUNT); }));
 
 	auto& checkCreatureList = checkCreatureLists[index];
 	auto it = checkCreatureList.begin(), end = checkCreatureList.end();
@@ -4266,8 +4272,9 @@ void Game::checkCreatures(size_t index)
 
 void Game::updateCreaturesPath(size_t index)
 {
-	g_scheduler.addEvent(createSchedulerTask(getNumber(ConfigManager::PATHFINDING_INTERVAL),
-	                                         [=, this] { updateCreaturesPath((index + 1) % EVENT_CREATURECOUNT); }));
+	g_scheduler.addEvent(createSchedulerTask(
+			getNumber(ConfigManager::PATHFINDING_INTERVAL),
+	        [=, this] { updateCreaturesPath((index + 1) % EVENT_CREATURECOUNT); }));
 
 	auto& checkCreatureList = checkCreatureLists[index];
 	for (Creature* creature : checkCreatureList) {
@@ -4275,6 +4282,89 @@ void Game::updateCreaturesPath(size_t index)
 			creature->forceUpdatePath();
 		}
 	}
+}
+
+void Game::updateStatusString(void)
+{
+	g_scheduler.addEvent(createSchedulerTask(
+			getNumber(ConfigManager::STATUS_MIN_REQUEST_INTERVAL) * 1000,
+			[this] { updateStatusString(); }));
+
+	int numOnlinePlayers = (int)getPlayersOnline();
+	int numUniquePlayers = 0;
+	int maxPlayersPerIp = getNumber(ConfigManager::STATUS_MAX_PLAYERS_PER_IP);
+	std::unordered_map<boost::asio::ip::address, int> playersPerIp;
+	for (auto [_, player]: getPlayers()) {
+		auto ip = player->getIP();
+		if(ip.is_unspecified()){
+			continue;
+		}
+
+		auto ret = playersPerIp.insert({ip, 1});
+		if(ret.second){
+			numUniquePlayers += 1;
+		}else{
+			if(maxPlayersPerIp <= 0 || ret.first->second < maxPlayersPerIp){
+				numOnlinePlayers += 1;
+			}
+			ret.first->second += 1;
+		}
+	}
+
+	pugi::xml_document doc;
+
+	pugi::xml_node decl = doc.prepend_child(pugi::node_declaration);
+	decl.append_attribute("version") = "1.0";
+
+	pugi::xml_node tsqp = doc.append_child("tsqp");
+	tsqp.append_attribute("version") = "1.0";
+
+	pugi::xml_node serverinfo = tsqp.append_child("serverinfo");
+	serverinfo.append_attribute("uptime") = std::to_string(getUptimeSeconds());
+	serverinfo.append_attribute("ip") = getString(ConfigManager::IP);
+	serverinfo.append_attribute("servername") = getString(ConfigManager::SERVER_NAME);
+	serverinfo.append_attribute("port") = std::to_string(getNumber(ConfigManager::HTTP_PORT));
+	serverinfo.append_attribute("location") = getString(ConfigManager::LOCATION);
+	serverinfo.append_attribute("url") = getString(ConfigManager::URL);
+	serverinfo.append_attribute("server") = STATUS_SERVER_NAME;
+	serverinfo.append_attribute("version") = STATUS_SERVER_VERSION;
+	serverinfo.append_attribute("client") = CLIENT_VERSION_STR;
+
+	pugi::xml_node owner = tsqp.append_child("owner");
+	owner.append_attribute("name") = getString(ConfigManager::OWNER_NAME);
+	owner.append_attribute("email") = getString(ConfigManager::OWNER_EMAIL);
+
+	pugi::xml_node players = tsqp.append_child("players");
+	players.append_attribute("online") = std::to_string(numOnlinePlayers).c_str();
+	players.append_attribute("unique") = std::to_string(numUniquePlayers).c_str();
+	players.append_attribute("max") = std::to_string(getNumber(ConfigManager::MAX_PLAYERS)).c_str();
+	players.append_attribute("peak") = std::to_string(getPlayersRecord()).c_str();
+
+	pugi::xml_node monsters = tsqp.append_child("monsters");
+	monsters.append_attribute("total") = std::to_string(getMonstersOnline());
+
+	pugi::xml_node npcs = tsqp.append_child("npcs");
+	npcs.append_attribute("total") = std::to_string(getNpcsOnline());
+
+	pugi::xml_node rates = tsqp.append_child("rates");
+	rates.append_attribute("experience") = std::to_string(getNumber(ConfigManager::RATE_EXPERIENCE));
+	rates.append_attribute("skill") = std::to_string(getNumber(ConfigManager::RATE_SKILL));
+	rates.append_attribute("loot") = std::to_string(getNumber(ConfigManager::RATE_LOOT));
+	rates.append_attribute("magic") = std::to_string(getNumber(ConfigManager::RATE_MAGIC));
+	rates.append_attribute("spawn") = std::to_string(getNumber(ConfigManager::RATE_SPAWN));
+
+	pugi::xml_node map = tsqp.append_child("map");
+	map.append_attribute("name") = getString(ConfigManager::MAP_NAME);
+	map.append_attribute("author") = getString(ConfigManager::MAP_AUTHOR);
+	map.append_attribute("width") = std::to_string(this->map.width).c_str();
+	map.append_attribute("height") = std::to_string(this->map.height).c_str();
+
+	pugi::xml_node motd = tsqp.append_child("motd");
+	motd.text() = "N/A";
+
+	std::ostringstream ss;
+	doc.save(ss, "", pugi::format_raw);
+	SetStatusString(ss.str());
 }
 
 void Game::changeSpeed(Creature* creature, int32_t varSpeedDelta)

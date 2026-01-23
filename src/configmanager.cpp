@@ -219,7 +219,7 @@ bool ConfigManager::load()
 		}
 
 		integer[STATUS_PORT] = getGlobalNumber(L, "statusProtocolPort", 7171);
-		integer[STATUS_MIN_REQUEST_INTERVAL] = getGlobalNumber(L, "statusTimeout", 5000);
+		integer[STATUS_MIN_REQUEST_INTERVAL] = getGlobalNumber(L, "statusMinRequestInterval", 5 * 60);
 
 		integer[HTTP_PORT] = getGlobalNumber(L, "httpPort", 8080);
 

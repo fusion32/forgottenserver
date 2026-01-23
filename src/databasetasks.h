@@ -9,9 +9,10 @@
 
 struct DatabaseTask
 {
-	DatabaseTask(std::string&& query, std::function<void(DBResult_ptr, bool)>&& callback, bool store) :
-	    query(std::move(query)), callback(std::move(callback)), store(store)
-	{}
+	DatabaseTask(void) = default;
+	DatabaseTask(std::string&& query, std::function<void(DBResult_ptr, bool)>&& callback, bool store)
+		: query(std::move(query)), callback(std::move(callback)), store(store) {}
+	operator bool(void) const { return (bool)callback; }
 
 	std::string query;
 	std::function<void(DBResult_ptr, bool)> callback;
@@ -31,7 +32,7 @@ public:
 	void threadMain();
 
 private:
-	void runTask(const DatabaseTask& task);
+	void runTask(DatabaseTask &&task);
 
 	Database db;
 	std::thread thread;

@@ -83,17 +83,6 @@ public:
 	bool loadMainMap(const std::string& filename);
 	void loadMap(const std::string& path, bool isCalledByLua = false);
 
-	/**
-	 * Get the map size - info purpose only
-	 * \param width width of the map
-	 * \param height height of the map
-	 */
-	void getMapDimensions(uint32_t& width, uint32_t& height) const
-	{
-		width = map.width;
-		height = map.height;
-	}
-
 	void setWorldType(WorldType_t type);
 	WorldType_t getWorldType() const { return worldType; }
 
@@ -425,6 +414,7 @@ public:
 	void checkCreatureAttack(uint32_t creatureId);
 	void checkCreatures(size_t index);
 	void updateCreaturesPath(size_t index);
+	void updateStatusString(void);
 
 	bool combatBlockHit(CombatDamage& damage, Creature* attacker, Creature* target, bool checkDefense, bool checkArmor,
 	                    bool field, bool ignoreResistances = false);

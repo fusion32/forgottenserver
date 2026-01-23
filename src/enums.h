@@ -38,8 +38,8 @@ enum RuleViolationReasons_t : uint8_t
 
 enum ThreadState
 {
+	THREAD_STATE_PENDING,
 	THREAD_STATE_RUNNING,
-	THREAD_STATE_CLOSING,
 	THREAD_STATE_TERMINATED,
 };
 

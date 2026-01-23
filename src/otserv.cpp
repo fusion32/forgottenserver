@@ -254,16 +254,10 @@ int main(int argc, const char **argv){
 	g_game.start();
 	g_game.setGameState(GAME_STATE_NORMAL);
 
-	// TODO(fusion): Simplify threads?
+	// TODO(fusion): Simplify threads "API"?
 	g_dispatcher.start();
 	g_scheduler.start();
 	g_databaseTasks.start();
-
-	//===================================================================================
-	//===================================================================================
-	//===================================================================================
-	//===================================================================================
-
 
 	// SERVICE BIND ADDRESS
 	// IMPORTANT(fusion): Using an IPv6 address here will cause the services to listen
@@ -299,7 +293,7 @@ int main(int argc, const char **argv){
 	}
 
 	{ // STATUS SERVICE
-		auto minRequestInterval = chrono::milliseconds(getNumber(ConfigManager::STATUS_MIN_REQUEST_INTERVAL));
+		auto minRequestInterval = chrono::seconds(getNumber(ConfigManager::STATUS_MIN_REQUEST_INTERVAL));
 		asio::ip::tcp::endpoint endpoint(bindAddress, getNumber(ConfigManager::STATUS_PORT));
 		asio::co_spawn(g_ioContext,
 				StatusService(endpoint, minRequestInterval),
