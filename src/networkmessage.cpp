@@ -218,7 +218,3 @@ void NetworkMessage::addItemId(uint16_t itemId) {
 	add<uint16_t>(Item::items[itemId].clientId);
 }
 
-void NetworkMessage::dump(std::string_view name) const {
-	PrintBuffer(name, buffer.data(), getWrittenLength());
-}
-

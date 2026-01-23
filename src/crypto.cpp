@@ -14,7 +14,7 @@ static std::mutex	g_RsaPrivateKeyMutex;
 static RSA			*g_RsaPrivateKey = NULL;
 
 static void DumpOpenSSLErrors(std::string_view where, std::string_view what){
-	LOG_ERR("OpenSSL error(s) while executing {} at {}:\n", what, where);
+	LOG_ERR("OpenSSL error(s) while executing {} at {}:", what, where);
 	ERR_print_errors_cb(
 		[](const char *str, size_t len, void *u) -> int {
 			(void)u;

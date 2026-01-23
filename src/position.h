@@ -65,4 +65,20 @@ struct Position
 
 std::ostream& operator<<(std::ostream&, const Position&);
 
+template<>
+struct fmt::formatter<Position>{
+	constexpr auto parse(format_parse_context &ctx){
+		auto it = ctx.begin();
+		auto end = ctx.end();
+		if(it != end && *it != '}')
+			throw format_error("invalid format");
+		return it;
+	}
+
+	template<typename FormatCtx>
+	auto format(const Position &pos, FormatCtx &ctx) const {
+		return fmt::format_to(ctx.out(), "({}, {}, {})", pos.x, pos.y, pos.z);
+	}
+};
+
 #endif // FS_POSITION_H

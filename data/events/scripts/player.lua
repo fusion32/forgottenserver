@@ -277,7 +277,9 @@ end
 function Player:onNetworkMessage(command, msg)
 	local handler = PacketHandlers[command]
 	if not handler then
-		--io.write(string.format("Player: %s sent an unknown packet header: 0x%02X with %d bytes!\n", self:getName(), recvByte, msg:len()))
+		-- NOTE(fusion): This can be useful for detecting unhandled packets but
+		-- can also get quite verbose on a protocol upgrade scenario.
+		--pwarn("unknown packet %02X (len=%d) from player %s", command, msg:len(), self:getName())
 		return
 	end
 

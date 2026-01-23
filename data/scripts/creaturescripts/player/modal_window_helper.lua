@@ -38,12 +38,12 @@ end
 
 function ModalWindow:addButton(name, callback)
 	if type(name) ~= "string" then
-		io.write("ModalWindow:addButton: name must be a string.\n")
+		pwarn("name must be a string")
 		name = tostring(name)
 	end
 
 	if self.buttons[name] then
-		io.write("ModalWindow: Button with name '" .. name .. "' already exists.\n")
+		perror("duplicate button \"%s\"", name)
 		return false
 	end
 
@@ -56,13 +56,13 @@ end
 
 function ModalWindow:removeButton(name)
 	if type(name) ~= "string" then
-		io.write("ModalWindow:removeButton: name must be a string.\n")
+		pwarn("name must be a string")
 		name = tostring(name)
 	end
 
 	local button = self.buttons[name]
 	if not button then
-		io.write("ModalWindow: Button with name '" .. name .. "' does not exist.\n")
+		perror("no button with name \"%s\"", name)
 		return false
 	end
 
@@ -72,19 +72,20 @@ function ModalWindow:removeButton(name)
 end
 
 function ModalWindow:callButton(name, player, button, choice)
+	-- TODO(fusion): Something is not quite right.
 	if type(name) ~= "string" then
-		io.write("ModalWindow:callButton: name must be a string.\n")
+		pwarn("name must be a string")
 		name = tostring(name)
 	end
 
 	local button = self.buttons[name]
 	if not button then
-		io.write("ModalWindow: Button with name '" .. name .. "' does not exist.\n")
+		perror("no button with name \"%s\"", name)
 		return false
 	end
 
 	if not button.callback then
-		io.write("ModalWindow: Button with name '" .. name .. "' has no callback.\n")
+		perror("button with name \"%s\" has no callback", name)
 		return false
 	end
 	return button.callback(player, button, choice)
@@ -112,7 +113,7 @@ end
 
 function ModalWindow:addChoice(text, callback)
 	if type(text) ~= "string" then
-		io.write("ModalWindow:addChoice: text must be a string.\n")
+		pwarn("text must be a string")
 		text = tostring(text)
 	end
 
@@ -125,13 +126,13 @@ end
 
 function ModalWindow:removeChoice(text)
 	if type(text) ~= "string" then
-		io.write("ModalWindow:removeChoice: text must be a string.\n")
+		pwarn("text must be a string")
 		text = tostring(text)
 	end
 
 	local choice = self.choices[text]
 	if not choice then
-		io.write("ModalWindow: Choice with text '" .. text .. "' does not exist.\n")
+		perror("no choice with name \"%s\"", text)
 		return false
 	end
 
@@ -142,18 +143,18 @@ end
 
 function ModalWindow:callChoice(text, player, button, choice)
 	if type(text) ~= "string" then
-		io.write("ModalWindow:callChoice: text must be a string.\n")
+		pwarn("text must be a string")
 		text = tostring(text)
 	end
 
 	local choice = self.choices[text]
 	if not choice then
-		io.write("ModalWindow: Choice with text '" .. text .. "' does not exist.\n")
+		perror("no choice with name \"%s\"", text)
 		return false
 	end
 
 	if not choice.callback then
-		io.write("ModalWindow: Choice with text '" .. text .. "' has no callback.\n")
+		perror("choice with text \"%s\" has no callback", text)
 		return false
 	end
 	return choice.callback(player, button, choice)

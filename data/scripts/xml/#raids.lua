@@ -13,18 +13,18 @@ local defaultMessageType = "event"
 local function parseAnnounce(node, filename)
 	local message = node:attribute("message")
 	if not message then
-		io.write("[Error] Missing message attribute, check data/raids/" .. filename .. "\n")
+		perror("missing announce message, check data/raids/%s", filename)
 	end
 
 	local type = node:attribute("type")
 	if not type then
-		io.write("[Notice] Missing type for announce event in " .. filename .. ". Using default: " .. defaultMessageType .. ".\n")
+		pwarn("missing announce type in %s... using default \"%s\"", filename, defaultMessageType)
 		type = defaultMessageType
 	end
 
 	local messageType = messageTypes[type:lower()]
 	if not messageType then
-		io.write("[Notice] Unknown type " .. type .. " for announce event in " .. filename .. ". Using default: " .. messageTypes[defaultMessageType] .. ".\n")
+		pwarn("invalid announce type \"%s\" in %s... using default \"%s\"", filename, messageTypes[defaultMessageType])
 		messageType = messageTypes[defaultMessageType]
 	end
 
@@ -40,7 +40,7 @@ local function parseAreaSpawn(node, filename)
 	if radius then
 		local centerx, centery, centerz = tonumber(node:attribute("centerx")), tonumber(node:attribute("centery")), tonumber(node:attribute("centerz"))
 		if not centerx or not centery or not centerz then
-			io.write("[Error] Missing one of: centerx, centery, centerz, check data/raids/" .. filename .. "\n")
+			perror("missing one of: centerx, centery, centerz, check data/raids/%s", filename)
 		end
 
 		fromx, fromy, fromz = centerx - radius, centery - radius, z
@@ -48,12 +48,12 @@ local function parseAreaSpawn(node, filename)
 	else
 		fromx, fromy, fromz = tonumber(node:attribute("fromx")), tonumber(node:attribute("fromy")), tonumber(node:attribute("fromz"))
 		if not fromx or not fromy or not fromz then
-			io.write("[Error] Missing one of: fromx, fromy, fromz, check data/raids/" .. filename .. "\n")
+			perror("missing one of: fromx, fromy, fromz, check data/raids/%s", filename)
 		end
 
 		tox, toy, toz = tonumber(node:attribute("tox")), tonumber(node:attribute("toy")), tonumber(node:attribute("toz"))
 		if not tox or not toy or not toz then
-			io.write("[Error] Missing one of: tox, toy, toz, check data/raids/" .. filename .. "\n")
+			perror("missing one of: tox, toy, toz, check data/raids/%s", filename)
 		end
 	end
 
@@ -61,7 +61,7 @@ local function parseAreaSpawn(node, filename)
 	for spawnNode in node:children() do
 		local name = spawnNode:attribute("name")
 		if not name then
-			io.write("[Error] Missing attribute name, check data/raids/" .. filename .. "\n")
+			perror("missing area spawn name, check data/raids/%s", filename)
 			return nil
 		end
 
@@ -69,15 +69,15 @@ local function parseAreaSpawn(node, filename)
 		if not minAmount and not maxAmount then
 			local amount = tonumber(spawnNode:attribute("amount"))
 			if not amount then
-				io.write("[Error] Missing attributes minamount/maxamount or amount, check data/raids/" .. filename .. "\n")
+				perror("missing area spawn attributes minamount/maxamount or amount, check data/raids/%s", filename)
 			end
 
 			minAmount, maxAmount = amount, amount
 		elseif not minAmount then
-			io.write("[Warning] Missing attribute minamount in " .. filename .. ", using maxamount as default.\n")
+			pwarn("missing attribute minamount in %s, using maxamount as default", filename)
 			minAmount = maxAmount
 		elseif not maxAmount then
-			io.write("[Warning] Missing attribute maxamount in " .. filename .. ", using minamount as default.\n")
+			pwarn("missing attribute maxamount in %s, using minamount as default.", filename)
 			maxAmount = minAmount
 		end
 
@@ -97,35 +97,32 @@ end
 local function parseScript(node)
 	local script = node:attribute("script")
 	if not script then
-		io.write("[Error] Missing attribute script, check data/raids/" .. filename .. "\n")
+		perror("missing attribute script, check data/raids/%s", filename)
 		return nil
 	end
 
 	local scriptFile = "data/raids/scripts/" .. script
 	dofile(script)
 	if not onRaid then
-		io.write("[Error] Can not load raid script, check " .. scriptFile .. " for a missing onRaid callback\n")
+		perror("can not load raid script, check %s for a missing onRaid callback", scriptFile)
 		return nil
 	end
 
 	local callback = onRaid
-
-	-- let it be garbage collected
 	onRaid = nil
-
 	return callback
 end
 
 local function parseSingleSpawn(node, filename)
 	local name = node:attribute("name")
 	if not name then
-		io.write("[Error] Missing attribute name, check data/raids/" .. filename .. "\n")
+		perror("missing single spawn name, check data/raids/%s", filename)
 		return nil
 	end
 
 	local x, y, z = tonumber(node:attribute("x")), tonumber(node:attribute("y")), tonumber(node:attribute("z"))
 	if not x or not y or not z then
-		io.write("[Error] Missing one of: x, y, z, check data/raids/" .. filename .. "\n")
+		perror("missing one of: x, y, z, check data/raids/%s", filename)
 	end
 
 	return function()
@@ -148,13 +145,13 @@ local function parseRaid(filename)
 	for eventNode in eventNodes:children() do
 		local parse = eventParsers[eventNode:name()]
 		if not parse then
-			io.write("[Error] Unknown event type: " .. eventNode:name() .. ".\n")
+			perror("invalid event type %s", eventNode:name())
 			return nil
 		end
 
 		local delay = tonumber(eventNode:attribute("delay"))
 		if not delay then
-			io.write("[Error] Missing attribute delay, check data/raids/" .. filename .. "\n")
+			perror("missing attribute delay, check data/raids/%s", filename)
 			return nil
 		end
 
@@ -172,13 +169,13 @@ end
 local function configureRaidEvent(node)
 	local name = node:attribute("name")
 	if not name then
-		io.write("[Error] Missing attribute name for raid.\n")
+		perror("missing raid name")
 		return nil
 	end
 
 	local filename = node:attribute("file")
 	if not filename then
-		io.write('[Warning] file attribute missing for raid "' .. name .. '". Using default: "' .. name .. '.xml"\n')
+		pwarn("missing raid %s file, using default %s.xml", name, name)
 		filename = name .. ".xml"
 	end
 
@@ -187,7 +184,7 @@ local function configureRaidEvent(node)
 
 	local interval = tonumber(node:attribute("interval2"))
 	if not interval or interval == 0 then
-		io.write("[Error] interval2 attribute missing or zero (would divide by 0), check raid " .. name .. " in data/raids/raids.xml\n")
+		perror("interval2 attribute missing or zero (would divide by 0), check raid %s in data/raids/raids.xml", name)
 		return nil
 	end
 	raid.interval = interval
@@ -196,7 +193,7 @@ local function configureRaidEvent(node)
 	if margin and margin > 0 then
 		raid.margin = margin * 60 * 1000
 	else
-		io.write("[Warning] margin attribute missing for raid " .. name .. ". Using default: 0\n")
+		pwarn("margin attribute missing for raid %s, using default 0")
 	end
 
 	local repeats = tobool(node:attribute("repeat"))
@@ -217,16 +214,15 @@ local function configureRaidEvent(node)
 end
 
 local function loadXMLRaids()
+	pinfo("Loading legacy XML raids from data/raids/raids.xml...")
+
 	local doc = XMLDocument("data/raids/raids.xml")
 	if not doc then
-		io.write("[Warning - Scripts::XML::loadXMLRaids] Could not load raids.xml.\n")
+		pwarn("could not load raids.xml")
 		return
 	end
 
 	local raids = doc:child("raids")
-
-	io.write(">> Loading legacy XML raids from data/raids/raids.xml...\n")
-
 	local loaded, start = 0, os.mtime()
 	for node in raids:children() do
 		local enabled = node:attribute("enabled")
@@ -239,7 +235,7 @@ local function loadXMLRaids()
 		end
 	end
 
-	io.write(">> Loaded " .. loaded .. " raids in " .. os.mtime() - start .. "ms.\n")
+	pinfo("Loaded %d raids in %dms", loaded, (os.mtime() - start))
 end
 
 loadXMLRaids()

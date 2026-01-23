@@ -167,6 +167,10 @@ protected:
 	std::map<int32_t, std::string> cacheFiles;
 
 private:
+	static int luaLogInfo(lua_State *L);
+	static int luaLogWarn(lua_State *L);
+	static int luaLogError(lua_State *L);
+
 	// lua functions
 	static int luaDoPlayerAddItem(lua_State* L);
 

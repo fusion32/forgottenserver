@@ -13,16 +13,15 @@ event.onReportBug = function(self, message, position)
 		return true
 	end
 
-	io.output(file)
-	io.write("------------------------------\n")
-	io.write("Name: " .. name)
+	file:write("------------------------------\n")
+	file:write("Name: " .. name)
 	if position ~= nil then
-		io.write(" [Map position: " .. position.x .. ", " .. position.y .. ", " .. position.z .. "]")
+		file:write(" [Map position: " .. position.x .. ", " .. position.y .. ", " .. position.z .. "]")
 	end
 	local playerPosition = self:getPosition()
-	io.write(" [Player Position: " .. playerPosition.x .. ", " .. playerPosition.y .. ", " .. playerPosition.z .. "]\n")
-	io.write("Comment: " .. message .. "\n")
-	io.close(file)
+	file:write(" [Player Position: " .. playerPosition.x .. ", " .. playerPosition.y .. ", " .. playerPosition.z .. "]\n")
+	file:write("Comment: " .. message .. "\n")
+	file:close()
 
 	self:sendTextMessage(MESSAGE_EVENT_DEFAULT, "Your report has been sent to " .. configManager.getString(configKeys.SERVER_NAME) .. ".")
 	return true

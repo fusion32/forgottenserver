@@ -51,6 +51,16 @@ void PrintBuffer(std::string_view name, const uint8_t *data, int len);
 template<> struct fmt::formatter<boost::asio::ip::address> : fmt::ostream_formatter {};
 template<> struct fmt::formatter<boost::asio::ip::tcp::endpoint> : fmt::ostream_formatter {};
 
+// NOTE(fusion): Enable enums to be formated as their underlying type.
+template<typename E>
+struct fmt::formatter<E, std::enable_if_t<std::is_enum_v<E>, char>>
+		: fmt::formatter<std::underlying_type_t<E>> {
+	auto format(const E &e, fmt::format_context &ctx) const {
+		return fmt::formatter<std::underlying_type_t<E>>::format(
+				static_cast<std::underlying_type_t<E>>(e), ctx);
+	}
+};
+
 // Logging
 //==============================================================================
 #define LOG(...) \
@@ -124,12 +134,6 @@ public:
     FileInserter &operator++(void) { return *this; }
     FileInserter &operator++(int) { return *this; }
 };
-
-// NOTE(fusion): Enable enums to be formated as their underlying type.
-template<typename T, typename = std::enable_if_t<std::is_enum_v<T>>>
-auto format_as(T t) {
-    return fmt::underlying(t);
-}
 
 template<typename ...Args>
 inline void LogAdd(fmt::text_style style, const char *prefix,

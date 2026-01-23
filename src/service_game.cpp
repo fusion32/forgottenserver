@@ -94,13 +94,12 @@ struct GameConnection{
     }
 
     ~GameConnection(void){
-        // TODO(fusion): This will probably always get an Z_DATA_ERROR because
-        // there hasn't been a FINAL block to wrap the compression stream but
-        // it doesn't really matter since the connection is done. We might want
-        // to filter those out.
+        // NOTE(fusion): This will pretty much always get an Z_DATA_ERROR because
+        // there hasn't been a FINAL block to wrap the compression stream but it
+        // doesn't really matter since the connection is done.
         if(deflateStreamInitialized){
             int ret = deflateEnd(&deflateStream);
-            if(ret != Z_OK){
+            if(ret != Z_OK && ret != Z_DATA_ERROR){
                 LOG_WARN("failed to end deflate stream: ({}) {}", ret,
                         (deflateStream.msg ? deflateStream.msg : "no message"));
             }
@@ -3720,7 +3719,10 @@ static asio::awaitable<bool> ReadGamePacket(const GameConnection_ptr &connection
         connection->clientSequence += 1;
     }
 
+#ifdef __DEBUG_PACKETS__
     PrintBuffer("INPUT", input.getRemainingBuffer(), input.getRemainingLength());
+#endif
+
     co_return true;
 }
 
@@ -3792,7 +3794,9 @@ static bool CompressOutput(const GameConnection_ptr &connection,
 
 static asio::awaitable<bool> WriteGamePacket(const GameConnection_ptr &connection,
                                              const OutputMessage_ptr &output){
+#ifdef __DEBUG_PACKETS__
     PrintBuffer("OUTPUT", output->getOutputBuffer(), output->getOutputLength());
+#endif
 
     // TODO(fusion): The 2 high bits are probably used to signal what's the
     // compression being used. I haven't tested but it'll probably accept the

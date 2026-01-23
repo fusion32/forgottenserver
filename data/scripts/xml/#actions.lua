@@ -17,7 +17,7 @@ local function getIds(singleIdKey, fromIdKey, toIdKey)
 
         local toid = tonumber(node:attribute(toIdKey))
         if not toid then
-            io.write("[Error] Missing attribute " .. toIdKey .. ", check data/actions/actions.xml.\n")
+            perror("missing attribute \"%s\", check data/actions/actions.xml", toIdKey)
             return {}
         end
 
@@ -42,7 +42,7 @@ local function configureActionEvent(node)
             local actionIds = getActionIds(node)
 
             if #actionIds == 0 then
-                io.write("[Error] Missing attribute itemid or uniqueid or actionid, check 'data/actions/actions.xml'.\n")
+                perror("missing attribute itemid or uniqueid or actionid, check 'data/actions/actions.xml'")
                 return nil
             end
 
@@ -66,13 +66,13 @@ local function configureActionEvent(node)
     local function_ = node:attribute("function")
     local script = node:attribute("script")
     if not function_ and not script then
-        io.write("[Warning] function or script attribute missing for action '" .. name .. "'.\n")
+        pwarn("function or script attribute missing for action %s.", name)
         return nil
     end
 
     if function_ then
         if function_ ~= "market" then
-            io.write("[Error] Invalid function attribute, check 'data/actions/actions.xml'.\n")
+            perror("invalid function attribute, check 'data/actions/actions.xml'")
             return nil
         end
 
@@ -83,13 +83,11 @@ local function configureActionEvent(node)
         local scriptFile = "data/actions/scripts/" .. script
         dofile(scriptFile)
         if not onUse then
-            io.write("[Error] Can not load action script, check '" .. scriptFile .. "' for a missing onUse callback\n")
+            perror("can not load action script, check %s for a missing onUse callback", scriptFile)
             return nil
         end
 
         action:onUse(onUse)
-
-        -- let it be garbage collected
         onUse = nil
     end
 
@@ -97,16 +95,15 @@ local function configureActionEvent(node)
 end
 
 local function loadXMLActions()
+    pinfo("Loading legacy XML actions from data/actions/actions.xml...")
+
     local doc = XMLDocument("data/actions/actions.xml")
     if not doc then
-        io.write("[Warning - Scripts::XML::loadXMLActions] Could not load actions.xml.\n")
+        pwarn("could not load actions.xml")
         return
     end
 
     local actions = doc:child("actions")
-
-    io.write(">> Loading legacy XML actions from data/actions/actions.xml...\n")
-
     local loaded, start = 0, os.mtime()
     for node in actions:children() do
         local action = configureActionEvent(node)
@@ -116,7 +113,7 @@ local function loadXMLActions()
         end
     end
 
-    io.write(">> Loaded " .. loaded .. " actions in " .. os.mtime() - start .. "ms.\n")
+    pinfo("Loaded %d actions in %dms", loaded, (os.mtime() - start))
 end
 
 loadXMLActions()

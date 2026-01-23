@@ -148,8 +148,6 @@ public:
 	void addItem(uint16_t id, uint8_t count);
 	void addItem(const Item* item);
 	void addItemId(uint16_t itemId);
-
-	void dump(std::string_view name) const;
 };
 
 #endif // FS_NETWORKMESSAGE_H

@@ -1812,8 +1812,7 @@ bool ConditionLight::setParam(ConditionParam_t param, int32_t value)
 	switch (param) {
 		case CONDITION_PARAM_LIGHT_LEVEL: {
 			if (value < 1) {
-				std::cout << "[ConditionLight::setParam] trying to set invalid light value: " << value
-				          << " defaulting to 1" << std::endl;
+				LOG_WARN("light value {} clamped back to 1", value);
 			}
 			lightInfo.level = std::max(1, value);
 			return true;

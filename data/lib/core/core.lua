@@ -1,4 +1,5 @@
--- Note: The library of storages must be loaded previously to the other libraries.
+-- NOTE(fusion): Load preamble and storage tables before other libraries.
+dofile('data/lib/core/preamble.lua')
 dofile('data/lib/core/storages.lua')
 
 dofile('data/lib/core/achievements.lua')

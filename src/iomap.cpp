@@ -102,10 +102,10 @@ bool IOMap::loadMap(Map* map, const std::filesystem::path& fileName)
 		}
 
 		if (root_header.minorVersionItems > Item::items.minorVersion) {
-			std::cout << "[Warning - IOMap::loadMap] This map needs an updated items.otb." << std::endl;
+			LOG_WARN("this map needs an updated items.otb");
 		}
 
-		std::cout << "> Map size: " << root_header.width << "x" << root_header.height << '.' << std::endl;
+		LOG("Map size: {}x{}", root_header.width, root_header.height);
 		map->width = root_header.width;
 		map->height = root_header.height;
 
@@ -142,7 +142,7 @@ bool IOMap::loadMap(Map* map, const std::filesystem::path& fileName)
 		return false;
 	}
 
-	std::cout << "> Map loading time: " << (OTSYS_TIME() - start) / (1000.) << " seconds." << std::endl;
+	LOG("Map loading time: {} seconds", (OTSYS_TIME() - start) / 1000.0);
 	return true;
 }
 
@@ -293,9 +293,8 @@ bool IOMap::parseTileArea(OTB::Loader& loader, const OTB::Node& tileAreaNode, Ma
 					}
 
 					if (isHouseTile && item->isMoveable()) {
-						std::cout << "[Warning - IOMap::loadMap] Moveable item with ID: " << item->getID()
-						          << ", in house: " << house->getId() << ", at position [x: " << x << ", y: " << y
-						          << ", z: " << z << "]." << std::endl;
+						LOG_WARN("movable item {} inside house {} (x={}, y={}, z={})",
+								item->getID(), house->getId(), x, y, z);
 						delete item;
 					} else {
 						if (item->getItemCount() == 0) {
@@ -351,9 +350,8 @@ bool IOMap::parseTileArea(OTB::Loader& loader, const OTB::Node& tileAreaNode, Ma
 			}
 
 			if (isHouseTile && item->isMoveable()) {
-				std::cout << "[Warning - IOMap::loadMap] Moveable item with ID: " << item->getID()
-				          << ", in house: " << house->getId() << ", at position [x: " << x << ", y: " << y
-				          << ", z: " << z << "]." << std::endl;
+				LOG_WARN("movable item {} inside house {} (x={}, y={}, z={})",
+						item->getID(), house->getId(), x, y, z);
 				delete item;
 			} else {
 				if (item->getItemCount() == 0) {

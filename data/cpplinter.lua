@@ -1157,6 +1157,14 @@ XMLNode = {}
 
 -- Legacy Functions
 
+--- Logging functions
+function logInfo(message) end
+---@alias logInfo fun(message: string)
+function logWarn(func, file, line, message) end
+---@alias logWarn fun(func: string, file: string, line: number, message: string)
+function logError(func, file, line, message) end
+---@alias logError fun(func: string, file: string, line: number, message: string)
+
 --- Adds an item to a player's inventory.
 function doPlayerAddItem(uid, itemid, count) end
 ---@alias doPlayerAddItem fun(uid: number, itemid: number, count?: number): number

@@ -16,7 +16,7 @@ Raid = setmetatable({
 			if key == "interval" or key == "margin" or key == "repeats" then
 				rawset(self, key, value)
 			else
-				io.write("[Warning] Invalid attribute for raid: " .. key .. ". Ignoring...\n")
+				pwarn("invalid attribute \"%s\" for raid \"%s\"", key, name)
 			end
 		end
 
