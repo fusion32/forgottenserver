@@ -985,8 +985,8 @@ void Player::sendAddContainerItem(const Container* container, const Item* item)
 		if(container->getID() == ITEM_BROWSEFIELD){
 			index = container->size() - 1;
 
-			int lastPageIndex = firstIndex + container->capacity() - 1;
-			if(index > lastPageIndex){
+			int lastIndex = firstIndex + container->capacity() - 1;
+			if(index > lastIndex){
 				item = NULL;
 			}
 		}else if(firstIndex > 0){
@@ -1013,8 +1013,8 @@ void Player::sendUpdateContainerItem(const Container* container, int index, cons
 		}
 
 		int firstIndex = openContainers[cid].firstIndex;
-		int lastPageIndex = firstIndex + container->capacity() - 1;
-		if(index >= firstIndex && index <= lastPageIndex){
+		int lastIndex = firstIndex + container->capacity() - 1;
+		if(index >= firstIndex && index <= lastIndex){
 			SendUpdateContainerItem(connection, cid, index, newItem);
 		}
 	}
@@ -1046,9 +1046,9 @@ void Player::sendRemoveContainerItem(const Container* container, int index)
 		}
 
 		const Item *lastItem = NULL;
-		int lastPageIndex = firstIndex + container->capacity() - 1;
-		if(index >= firstIndex && index <= lastPageIndex){
-			lastItem = container->getItemByIndex(lastPageIndex + 1);
+		int lastIndex = firstIndex + container->capacity() - 1;
+		if(index >= firstIndex && index <= lastIndex){
+			lastItem = container->getItemByIndex(lastIndex + 1);
 		}
 
 		SendRemoveContainerItem(connection, cid, std::max<int>(index, firstIndex), lastItem);
