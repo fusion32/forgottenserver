@@ -293,7 +293,16 @@ private:
 		} value;
 		itemAttrTypes type;
 
-		explicit Attribute(itemAttrTypes type) : type(type) { memset(&value, 0, sizeof(value)); }
+		explicit Attribute(itemAttrTypes type) : type(type)
+		{
+			memset(&value, 0, sizeof(value));
+		}
+
+		Attribute(Attribute &&other) : Attribute(ITEM_ATTRIBUTE_NONE)
+		{
+			swap(other);
+		}
+
 		Attribute(const Attribute& i)
 		{
 			type = i.type;
@@ -307,11 +316,7 @@ private:
 				memset(&value, 0, sizeof(value));
 			}
 		}
-		Attribute(Attribute&& attribute) : value(attribute.value), type(attribute.type)
-		{
-			memset(&attribute.value, 0, sizeof(value));
-			attribute.type = ITEM_ATTRIBUTE_NONE;
-		}
+
 		~Attribute()
 		{
 			if (ItemAttributes::isStrAttrType(type)) {
@@ -320,33 +325,16 @@ private:
 				delete value.custom;
 			}
 		}
-		Attribute& operator=(Attribute other)
-		{
-			Attribute::swap(*this, other);
-			return *this;
-		}
-		Attribute& operator=(Attribute&& other)
-		{
-			if (this != &other) {
-				if (ItemAttributes::isStrAttrType(type)) {
-					delete value.string;
-				} else if (ItemAttributes::isCustomAttrType(type)) {
-					delete value.custom;
-				}
 
-				value = other.value;
-				type = other.type;
-
-				memset(&other.value, 0, sizeof(value));
-				other.type = ITEM_ATTRIBUTE_NONE;
-			}
+		Attribute &operator=(Attribute &&other)
+		{
+			swap(other);
 			return *this;
 		}
 
-		static void swap(Attribute& first, Attribute& second)
-		{
-			std::swap(first.value, second.value);
-			std::swap(first.type, second.type);
+		void swap(Attribute &other){
+			std::swap(value, other.value);
+			std::swap(type, other.type);
 		}
 	};
 

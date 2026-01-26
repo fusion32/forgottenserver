@@ -551,13 +551,11 @@ bool IOLoginData::saveItems(const Player* player, const ItemBlockList& itemList,
 		++runningId;
 
 		if (Container* container = item->getContainer()) {
-			if (container->getIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER)) {
-				container->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, 0);
-			}
-
 			int cid = player->getContainerID(container);
 			if(cid != -1){
 				container->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, cid + 1);
+			}else{
+				container->removeAttribute(ITEM_ATTRIBUTE_OPENCONTAINER);
 			}
 
 			containers.emplace_back(container, runningId);
@@ -591,7 +589,7 @@ bool IOLoginData::saveItems(const Player* player, const ItemBlockList& itemList,
 				if(cid != -1){
 					subContainer->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, cid + 1);
 				}else{
-					subContainer->setIntAttr(ITEM_ATTRIBUTE_OPENCONTAINER, 0);
+					subContainer->removeAttribute(ITEM_ATTRIBUTE_OPENCONTAINER);
 				}
 			}
 

@@ -1170,19 +1170,14 @@ void ItemAttributes::removeAttribute(itemAttrTypes type)
 		return;
 	}
 
-	auto prev_it = attributes.rbegin();
-	if ((*prev_it).type == type) {
-		attributes.pop_back();
-	} else {
-		auto it = prev_it, end = attributes.rend();
-		while (++it != end) {
-			if ((*it).type == type) {
-				(*it) = attributes.back();
-				attributes.pop_back();
-				break;
-			}
+	for(auto it = attributes.begin(); it != attributes.end(); ++it){
+		if(it->type == type){
+			it->swap(attributes.back());
+			attributes.pop_back();
+			break;
 		}
 	}
+
 	attributeBits &= ~type;
 }
 
