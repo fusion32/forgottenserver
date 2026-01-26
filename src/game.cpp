@@ -4295,6 +4295,13 @@ void Game::updateStatusString(void)
 	int maxPlayersPerIp = getNumber(ConfigManager::STATUS_MAX_PLAYERS_PER_IP);
 	std::unordered_map<boost::asio::ip::address, int> playersPerIp;
 	for (auto [_, player]: getPlayers()) {
+		// NOTE(fusion): Include only active players, with the idle timer hard
+		// coded to 15 minutes to prevent weird configurations from causing
+		// issues with server lists.
+		if(player->getIdleTime() >= (15 * 60 * 1000)){
+			continue;
+		}
+
 		auto ip = player->getIP();
 		if(ip.is_unspecified()){
 			continue;
@@ -4335,10 +4342,10 @@ void Game::updateStatusString(void)
 	owner.append_attribute("email") = getString(ConfigManager::OWNER_EMAIL);
 
 	pugi::xml_node players = tsqp.append_child("players");
-	players.append_attribute("online") = std::to_string(numOnlinePlayers).c_str();
-	players.append_attribute("unique") = std::to_string(numUniquePlayers).c_str();
-	players.append_attribute("max") = std::to_string(getNumber(ConfigManager::MAX_PLAYERS)).c_str();
-	players.append_attribute("peak") = std::to_string(getPlayersRecord()).c_str();
+	players.append_attribute("online") = std::to_string(numOnlinePlayers);
+	players.append_attribute("unique") = std::to_string(numUniquePlayers);
+	players.append_attribute("max") = std::to_string(getNumber(ConfigManager::MAX_PLAYERS));
+	players.append_attribute("peak") = std::to_string(getPlayersRecord());
 
 	pugi::xml_node monsters = tsqp.append_child("monsters");
 	monsters.append_attribute("total") = std::to_string(getMonstersOnline());
@@ -4356,8 +4363,8 @@ void Game::updateStatusString(void)
 	pugi::xml_node map = tsqp.append_child("map");
 	map.append_attribute("name") = getString(ConfigManager::MAP_NAME);
 	map.append_attribute("author") = getString(ConfigManager::MAP_AUTHOR);
-	map.append_attribute("width") = std::to_string(this->map.width).c_str();
-	map.append_attribute("height") = std::to_string(this->map.height).c_str();
+	map.append_attribute("width") = std::to_string(this->map.width);
+	map.append_attribute("height") = std::to_string(this->map.height);
 
 	pugi::xml_node motd = tsqp.append_child("motd");
 	motd.text() = "N/A";
