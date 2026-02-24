@@ -1057,7 +1057,7 @@ void ValueCallback::getMinMaxValues(Player* player, CombatDamage& damage) const
 {
 	// onGetPlayerMinMaxValues(...)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - ValueCallback::getMinMaxValues] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return;
 	}
 
@@ -1112,7 +1112,7 @@ void ValueCallback::getMinMaxValues(Player* player, CombatDamage& damage) const
 		}
 
 		default: {
-			std::cout << "ValueCallback::getMinMaxValues - unknown callback type" << std::endl;
+			LOG_ERR("unknown callback type {}", type);
 			tfs::lua::resetScriptEnv();
 			return;
 		}
@@ -1139,7 +1139,7 @@ void TileCallback::onTileCombat(Creature* creature, Tile* tile) const
 {
 	// onTileCombat(creature, pos)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - TileCallback::onTileCombat] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return;
 	}
 
@@ -1169,7 +1169,7 @@ void TargetCallback::onTargetCombat(Creature* creature, Creature* target) const
 {
 	// onTargetCombat(creature, target)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - TargetCallback::onTargetCombat] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return;
 	}
 

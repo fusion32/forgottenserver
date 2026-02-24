@@ -14,14 +14,14 @@ bool Vocations::loadFromXml()
 	pugi::xml_document doc;
 	pugi::xml_parse_result result = doc.load_file("data/XML/vocations.xml");
 	if (!result) {
-		printXMLError("Error - Vocations::loadFromXml", "data/XML/vocations.xml", result);
+		printXMLError("Vocations::loadFromXml", "data/XML/vocations.xml", result);
 		return false;
 	}
 
 	for (auto vocationNode : doc.child("vocations").children()) {
 		pugi::xml_attribute attr = vocationNode.attribute("id");
 		if (!attr) {
-			std::cout << "[Warning - Vocations::loadFromXml] Missing vocation id" << std::endl;
+			LOG_WARN("missing vocation id");
 			continue;
 		}
 
@@ -71,8 +71,7 @@ bool Vocations::loadFromXml()
 			} else if (caseInsensitiveEqual(attrName, "nopongkicktime")) {
 				voc.noPongKickTime = pugi::cast<uint32_t>(attrNode.value()) * 1000;
 			} else {
-				std::cout << "[Notice - Vocations::loadFromXml] Unknown attribute: \"" << attrName
-				          << "\" for vocation: " << voc.id << std::endl;
+				LOG_WARN("vocation {}: invalid attribute {}", voc.id, attrName);
 			}
 		}
 
@@ -83,12 +82,10 @@ bool Vocations::loadFromXml()
 					if (skillId <= SKILL_LAST) {
 						voc.skillMultipliers[skillId] = pugi::cast<double>(childNode.attribute("multiplier").value());
 					} else {
-						std::cout << "[Notice - Vocations::loadFromXml] No valid skill id: " << skillId
-						          << " for vocation: " << voc.id << std::endl;
+						LOG_WARN("vocation {}: invalid skill id {}", voc.id, skillId);
 					}
 				} else {
-					std::cout << "[Notice - Vocations::loadFromXml] Missing skill id for vocation: " << voc.id
-					          << std::endl;
+					LOG_WARN("vocation {}: missing skill id", voc.id);
 				}
 			} else if (caseInsensitiveEqual(childNode.name(), "formula")) {
 				if ((attr = childNode.attribute("meleeDamage"))) {
@@ -116,7 +113,7 @@ Vocation* Vocations::getVocation(uint16_t id)
 {
 	auto it = vocationsMap.find(id);
 	if (it == vocationsMap.end()) {
-		std::cout << "[Warning - Vocations::getVocation] Vocation " << id << " not found." << std::endl;
+		LOG_WARN("vocation {} not found", id);
 		return nullptr;
 	}
 	return &it->second;

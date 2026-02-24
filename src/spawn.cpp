@@ -25,7 +25,7 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 	pugi::xml_document doc;
 	pugi::xml_parse_result result = doc.load_file(filename.c_str());
 	if (!result) {
-		printXMLError("Error - Spawns::loadFromXml", filename, result);
+		printXMLError("Spawns::loadFromXml", filename, result);
 		return false;
 	}
 
@@ -46,13 +46,11 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 		}
 
 		if (radius > 30) {
-			std::cout << "[Warning - Spawns::loadFromXml] Radius size bigger than 30 at position: " << centerPos
-			          << ", consider lowering it." << std::endl;
+			LOG_WARN("{}: radius {} is very large (>30), consider lowering it", centerPos, radius);
 		}
 
 		if (!spawnNode.first_child()) {
-			std::cout << "[Warning - Spawns::loadFromXml] Empty spawn at position: " << centerPos
-			          << " with radius: " << radius << '.' << std::endl;
+			LOG_WARN("{}: empty spawn with radius {}", centerPos, radius);
 			continue;
 		}
 
@@ -66,18 +64,16 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 
 				int32_t interval = pugi::cast<int32_t>(childNode.attribute("spawntime").value()) * 1000;
 				if (interval < MINSPAWN_INTERVAL) {
-					std::cout << "[Warning - Spawns::loadFromXml] " << pos << " spawntime can not be less than "
-					          << MINSPAWN_INTERVAL / 1000 << " seconds." << std::endl;
+					LOG_WARN("{}: spawntime cannot be less than {} seconds", pos, (MINSPAWN_INTERVAL / 1000));
 					continue;
 				} else if (interval > MAXSPAWN_INTERVAL) {
-					std::cout << "[Warning - Spawns::loadFromXml] " << pos << " spawntime can not be more than "
-					          << MAXSPAWN_INTERVAL / 1000 << " seconds." << std::endl;
+					LOG_WARN("{}: spawntime cannot be more than {} seconds", pos, (MAXSPAWN_INTERVAL / 1000));
 					continue;
 				}
 
 				size_t monstersCount = std::distance(childNode.children().begin(), childNode.children().end());
 				if (monstersCount == 0) {
-					std::cout << "[Warning - Spawns::loadFromXml] " << pos << " empty monsters set." << std::endl;
+					LOG_WARN("{}: empty monster set", pos);
 					continue;
 				}
 
@@ -96,8 +92,7 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 
 					MonsterType* mType = g_monsters.getMonsterType(nameAttribute.as_string());
 					if (!mType) {
-						std::cout << "[Warning - Spawn::loadFromXml] " << pos << " can not find "
-						          << nameAttribute.as_string() << std::endl;
+						LOG_WARN("{}: cannot find monster type \"{}\"", pos, nameAttribute.as_string());
 						continue;
 					}
 
@@ -110,8 +105,7 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 					if (chance + totalChance > 100) {
 						chance = 100 - totalChance;
 						totalChance = 100;
-						std::cout << "[Warning - Spawns::loadFromXml] " << mType->name << ' ' << pos
-						          << " total chance for set can not be higher than 100." << std::endl;
+						LOG_WARN("{}:{}: total chance for monster set cannot be higher than 100%", pos, mType->name);
 					} else {
 						totalChance += chance;
 					}
@@ -120,16 +114,16 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 				}
 
 				if (sb.mTypes.empty()) {
-					std::cout << "[Warning - Spawns::loadFromXml] " << pos << " empty monsters set." << std::endl;
+					LOG_WARN("{}: empty monster set", pos);
 					continue;
 				}
 
 				sb.mTypes.shrink_to_fit();
 				if (sb.mTypes.size() > 1) {
 					std::sort(sb.mTypes.begin(), sb.mTypes.end(),
-					          [](std::pair<MonsterType*, uint16_t> a, std::pair<MonsterType*, uint16_t> b) {
-						          return a.second > b.second;
-					          });
+						[](std::pair<MonsterType*, uint16_t> a, std::pair<MonsterType*, uint16_t> b) {
+							return a.second > b.second;
+						});
 				}
 
 				spawn.addBlock(sb);
@@ -155,13 +149,9 @@ bool Spawns::loadFromXml(const std::string& filename, bool isCalledByLua)
 					spawn.addMonster(nameAttribute.as_string(), pos, dir, static_cast<uint32_t>(interval));
 				} else {
 					if (interval < MINSPAWN_INTERVAL) {
-						std::cout << "[Warning - Spawns::loadFromXml] " << nameAttribute.as_string() << ' ' << pos
-						          << " spawntime can not be less than " << MINSPAWN_INTERVAL / 1000 << " seconds."
-						          << std::endl;
+						LOG_WARN("{}: spawntime cannot be less than {} seconds", pos, (MINSPAWN_INTERVAL / 1000));
 					} else {
-						std::cout << "[Warning - Spawns::loadFromXml] " << nameAttribute.as_string() << ' ' << pos
-						          << " spawntime can not be more than " << MAXSPAWN_INTERVAL / 1000 << " seconds."
-						          << std::endl;
+						LOG_WARN("{}: spawntime cannot be more than {} seconds", pos, (MAXSPAWN_INTERVAL / 1000));
 					}
 				}
 			} else if (caseInsensitiveEqual(childNode.name(), "npc")) {
@@ -203,8 +193,7 @@ void Spawns::startup()
 
 	for (Npc* npc : npcList) {
 		if (!g_game.placeCreature(npc, npc->getMasterPos(), false, true)) {
-			std::cout << "[Warning - Spawns::startup] Couldn't spawn npc \"" << npc->getName()
-			          << "\" on position: " << npc->getMasterPos() << '.' << std::endl;
+			LOG_WARN("{}: unable to spawn npc \"{}\"", npc->getMasterPos(), npc->getName());
 			delete npc;
 		}
 	}
@@ -320,8 +309,7 @@ bool Spawn::spawnMonster(uint32_t spawnId, MonsterType* mType, const Position& p
 	if (startup) {
 		// No need to send out events to the surrounding since there is no one out there to listen!
 		if (!g_game.internalPlaceCreature(monster_ptr.get(), pos, true)) {
-			std::cout << "[Warning - Spawns::startup] Couldn't spawn monster \"" << monster_ptr->getName()
-			          << "\" on position: " << pos << '.' << std::endl;
+			LOG_WARN("{}: unable to spawn monster \"{}\"", pos, monster_ptr->getName());
 			return false;
 		}
 	} else {
@@ -408,7 +396,7 @@ bool Spawn::addMonster(const std::string& name, const Position& pos, Direction d
 {
 	MonsterType* mType = g_monsters.getMonsterType(name);
 	if (!mType) {
-		std::cout << "[Warning - Spawn::addMonster] Can not find " << name << std::endl;
+		LOG_WARN("invalid monster type \"{}\"", name);
 		return false;
 	}
 

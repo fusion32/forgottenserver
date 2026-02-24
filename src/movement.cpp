@@ -272,7 +272,7 @@ void MoveEvents::addEvent(MoveEvent moveEvent, int32_t id, MoveListMap& map)
 		std::list<MoveEvent>& moveEventList = it->second.moveEvent[moveEvent.getEventType()];
 		for (MoveEvent& existingMoveEvent : moveEventList) {
 			if (existingMoveEvent.getSlot() == moveEvent.getSlot()) {
-				std::cout << "[Warning - MoveEvents::addEvent] Duplicate move event found: " << id << std::endl;
+				LOG_WARN("duplicate move event for item {}", id);
 			}
 		}
 		moveEventList.push_back(std::move(moveEvent));
@@ -374,7 +374,7 @@ void MoveEvents::addEvent(MoveEvent moveEvent, const Position& pos, MovePosListM
 	} else {
 		std::list<MoveEvent>& moveEventList = it->second.moveEvent[moveEvent.getEventType()];
 		if (!moveEventList.empty()) {
-			std::cout << "[Warning - MoveEvents::addEvent] Duplicate move event found: " << pos << std::endl;
+			LOG_WARN("duplicate move event at {}", pos);
 		}
 
 		moveEventList.push_back(std::move(moveEvent));
@@ -503,7 +503,7 @@ std::string_view MoveEvent::getScriptEventName() const
 		case MOVE_EVENT_REMOVE_ITEM:
 			return "onRemoveItem";
 		default:
-			std::cout << "[Error - MoveEvent::getScriptEventName] Invalid event type" << std::endl;
+			LOG_ERR("invalid event type {}", eventType);
 			return "";
 	}
 }
@@ -512,7 +512,7 @@ bool MoveEvent::configureEvent(const pugi::xml_node& node)
 {
 	pugi::xml_attribute eventAttr = node.attribute("event");
 	if (!eventAttr) {
-		std::cout << "[Error - MoveEvent::configureMoveEvent] Missing event" << std::endl;
+		LOG_ERR("missing event");
 		return false;
 	}
 
@@ -530,8 +530,7 @@ bool MoveEvent::configureEvent(const pugi::xml_node& node)
 	} else if (tmpStr == "removeitem") {
 		eventType = MOVE_EVENT_REMOVE_ITEM;
 	} else {
-		std::cout << "Error: [MoveEvent::configureMoveEvent] No valid event name " << eventAttr.as_string()
-		          << std::endl;
+		LOG_ERR("invalid event name {}", eventAttr.as_string());
 		return false;
 	}
 
@@ -562,8 +561,7 @@ bool MoveEvent::configureEvent(const pugi::xml_node& node)
 			} else if (tmpStr == "ammo") {
 				slot = SLOTP_AMMO;
 			} else {
-				std::cout << "[Warning - MoveEvent::configureMoveEvent] Unknown slot type: "
-				          << slotAttribute.as_string() << std::endl;
+				LOG_WARN("invalid slot type {}", slotAttribute.as_string());
 			}
 		}
 
@@ -904,8 +902,7 @@ bool MoveEvent::loadFunction(const pugi::xml_attribute& attr, bool isScripted)
 		equipFunction = DeEquipItem;
 	} else {
 		if (!isScripted) {
-			std::cout << "[Warning - MoveEvent::loadFunction] Function \"" << functionName << "\" does not exist."
-			          << std::endl;
+			LOG_ERR("invalid function {}", functionName);
 			return false;
 		}
 	}
@@ -933,7 +930,7 @@ bool MoveEvent::executeStep(Creature* creature, Item* item, const Position& pos)
 	// onStepIn(creature, item, pos, fromPosition)
 	// onStepOut(creature, item, pos, fromPosition)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - MoveEvent::executeStep] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return false;
 	}
 
@@ -969,7 +966,7 @@ bool MoveEvent::executeEquip(Player* player, Item* item, slots_t slot, bool isCh
 	// onEquip(player, item, slot, isCheck)
 	// onDeEquip(player, item, slot, isCheck)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - MoveEvent::executeEquip] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return false;
 	}
 
@@ -1001,7 +998,7 @@ bool MoveEvent::executeAddRemItem(Item* item, Item* tileItem, const Position& po
 	// onaddItem(moveitem, tileitem, pos)
 	// onRemoveItem(moveitem, tileitem, pos)
 	if (!tfs::lua::reserveScriptEnv()) {
-		std::cout << "[Error - MoveEvent::executeAddRemItem] Call stack overflow" << std::endl;
+		LOG_ERR("call stack overflow");
 		return false;
 	}
 

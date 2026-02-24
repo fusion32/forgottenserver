@@ -19,18 +19,17 @@ bool Map::loadMap(const std::string& identifier, bool loadHouses, bool isCalledB
 {
 	IOMap loader;
 	if (!loader.loadMap(this, identifier)) {
-		std::cout << "Map::loadMap: failed to load map \"" << identifier << "\": "
-					<< loader.getLastErrorString() << std::endl;
+		LOG_ERR("{}: failed to load map: {}", identifier, loader.getLastErrorString());
 		return false;
 	}
 
 	if (!IOMap::loadSpawns(this, isCalledByLua)) {
-		std::cout << "[Warning - Map::loadMap] Failed to load spawn data." << std::endl;
+		LOG_WARN("{}: failed to load spawns", identifier);
 	}
 
 	if (loadHouses && !isCalledByLua) {
 		if (!IOMap::loadHouses(this)) {
-			std::cout << "[Warning - Map::loadMap] Failed to load house data." << std::endl;
+			LOG_WARN("{}: failed to load houses", identifier);
 		}
 
 		IOMapSerialize::loadHouseInfo();
@@ -84,7 +83,7 @@ Tile* Map::getTile(uint16_t x, uint16_t y, uint8_t z) const
 void Map::setTile(uint16_t x, uint16_t y, uint8_t z, Tile* newTile)
 {
 	if (z >= MAP_MAX_LAYERS) {
-		std::cout << "ERROR: Attempt to set tile on invalid coordinate " << Position(x, y, z) << "!" << std::endl;
+		LOG_ERR("invalid coordinate {}", Position(x, y, z));
 		return;
 	}
 
@@ -1061,7 +1060,8 @@ uint32_t Map::clean() const
 		g_game.setGameState(GAME_STATE_NORMAL);
 	}
 
-	std::cout << "> CLEAN: Removed " << count << " item" << (count != 1 ? "s" : "") << " from " << tiles << " tile"
-	          << (tiles != 1 ? "s" : "") << " in " << (OTSYS_TIME() - start) / (1000.) << " seconds." << std::endl;
+	LOG("removed {} item{} from {} tile{} (time elapsed: {} seconds)",
+		count, (count != 1 ? "s" : ""), tiles, (tiles != 1 ? "s" : ""),
+		(OTSYS_TIME() - start) / (1000.0));
 	return count;
 }

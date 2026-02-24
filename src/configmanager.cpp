@@ -127,7 +127,7 @@ std::vector<ExpStage> loadXMLStages()
 	pugi::xml_document doc;
 	pugi::xml_parse_result result = doc.load_file("data/XML/stages.xml");
 	if (!result) {
-		printXMLError("Error - loadXMLStages", "data/XML/stages.xml", result);
+		printXMLError("loadXMLStages", "data/XML/stages.xml", result);
 		return {};
 	}
 

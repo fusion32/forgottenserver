@@ -19,20 +19,19 @@ bool Mounts::loadFromXml()
 	pugi::xml_document doc;
 	pugi::xml_parse_result result = doc.load_file("data/XML/mounts.xml");
 	if (!result) {
-		printXMLError("Error - Mounts::loadFromXml", "data/XML/mounts.xml", result);
+		printXMLError("Mounts::loadFromXml", "data/XML/mounts.xml", result);
 		return false;
 	}
 
 	for (auto mountNode : doc.child("mounts").children()) {
 		uint32_t nodeId = pugi::cast<uint32_t>(mountNode.attribute("id").value());
 		if (nodeId == 0 || nodeId > std::numeric_limits<uint16_t>::max()) {
-			std::cout << "[Notice - Mounts::loadFromXml] Mount id \"" << nodeId << "\" is not within 1 and 65535 range"
-			          << std::endl;
+			LOG_WARN("mount id {} outside valid range [1, 65535]", nodeId);
 			continue;
 		}
 
 		if (getMountByID(nodeId)) {
-			std::cout << "[Notice - Mounts::loadFromXml] Duplicate mount with id: " << nodeId << std::endl;
+			LOG_WARN("duplicate mount id {}", nodeId);
 			continue;
 		}
 

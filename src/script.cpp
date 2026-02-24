@@ -19,7 +19,7 @@ bool Scripts::loadScripts(std::string folderName, bool isLib, bool reload)
 
 	const auto dir = fs::current_path() / "data" / folderName;
 	if (!fs::exists(dir) || !fs::is_directory(dir)) {
-		std::cout << "[Warning - Scripts::loadScripts] Can not load folder '" << folderName << "'." << std::endl;
+		LOG_ERR("unable to load folder '{}'", folderName);
 		return false;
 	}
 
@@ -35,7 +35,7 @@ bool Scripts::loadScripts(std::string folderName, bool isLib, bool reload)
 			size_t found = it->path().filename().string().find(disable);
 			if (found != std::string::npos) {
 				if (getBoolean(ConfigManager::SCRIPTS_CONSOLE_LOGS)) {
-					std::cout << "> " << it->path().filename().string() << " [disabled]" << std::endl;
+					LOG("{} [disabled]", it->path().filename().string());
 				}
 				continue;
 			}
@@ -50,24 +50,24 @@ bool Scripts::loadScripts(std::string folderName, bool isLib, bool reload)
 			if (redir.empty() || redir != it->parent_path().string()) {
 				auto p = fs::path(it->relative_path());
 				if (getBoolean(ConfigManager::SCRIPTS_CONSOLE_LOGS)) {
-					std::cout << ">> [" << p.parent_path().filename() << "]" << std::endl;
+					LOG("[{}]", p.parent_path().filename().string());
 				}
 				redir = it->parent_path().string();
 			}
 		}
 
-		if (scriptInterface.loadFile(scriptFile) == -1) {
-			std::cout << "> " << it->filename().string() << " [error]" << std::endl;
-			std::cout << "^ " << scriptInterface.getLastLuaError() << std::endl;
-			continue;
-		}
-
-		if (getBoolean(ConfigManager::SCRIPTS_CONSOLE_LOGS)) {
-			if (!reload) {
-				std::cout << "> " << it->filename().string() << " [loaded]" << std::endl;
-			} else {
-				std::cout << "> " << it->filename().string() << " [reloaded]" << std::endl;
+		if (scriptInterface.loadFile(scriptFile) != -1) {
+			if (getBoolean(ConfigManager::SCRIPTS_CONSOLE_LOGS)) {
+				if (!reload) {
+					LOG("{} [loaded]", it->filename().string());
+				} else {
+					LOG("{} [reloaded]", it->filename().string());
+				}
 			}
+		}else{
+			LOG_ERR("unable to load script {}: {}",
+					it->filename().string(),
+					scriptInterface.getLastLuaError());
 		}
 	}
 

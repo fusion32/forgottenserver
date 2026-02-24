@@ -41,15 +41,16 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 if (WIN32)
     add_compile_definitions(_WIN32_WINNT=0x0601)
-else ()
+endif()
+
+if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
     add_compile_options(-pipe -Wall -Wextra -Werror -pedantic -Wnon-virtual-dtor -Wno-deprecated-declarations -fno-strict-aliasing -fvisibility=hidden)
+    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options(-Wimplicit-fallthrough -Wmove)
+    endif ()
+elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+    add_compile_options(/utf-8)
 endif ()
-
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    add_compile_options(-Wimplicit-fallthrough -Wmove)
-endif ()
-
-add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 # Find packages.
 find_package(OpenSSL 3.0.0 REQUIRED COMPONENTS Crypto)

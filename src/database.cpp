@@ -9,53 +9,48 @@
 
 #include <mysql/errmsg.h>
 
-static tfs::detail::Mysql_ptr connectToDatabase(const bool retryIfError)
+static tfs::detail::Mysql_ptr connectToDatabase(bool retryIfError)
 {
-	bool isFirstAttemptToConnect = true;
+	tfs::detail::Mysql_ptr handle = nullptr;
+	while(true){
+		handle.reset(mysql_init(nullptr));
+		if(handle){
+			// NOTE(fusion): Later versions of the MariaDB connector enforces an SSL
+			// server config by default, causing the "SSL is required" error. This is
+			// not a big deal if you're planning on running everything on the same
+			// machine, but you'd still have make sure the server is configured to
+			// only accept local connections.
+#ifdef MARIADB_VERSION_ID
+			bool sslEnforce = false; // getBoolean(ConfigManager::MYSQL_ENFORCE_SSL);
+			mysql_options(handle.get(), MYSQL_OPT_SSL_ENFORCE, &sslEnforce);
+			mysql_options(handle.get(), MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslEnforce);
+			mysql_ssl_set(handle.get(), nullptr, nullptr, nullptr, nullptr, nullptr);
+#endif
 
-retry:
-	if (!isFirstAttemptToConnect) {
+			if (!mysql_real_connect(handle.get(),
+					getString(ConfigManager::MYSQL_HOST).c_str(),
+					getString(ConfigManager::MYSQL_USER).c_str(),
+					getString(ConfigManager::MYSQL_PASS).c_str(),
+					getString(ConfigManager::MYSQL_DB).c_str(),
+					getNumber(ConfigManager::SQL_PORT),
+					getString(ConfigManager::MYSQL_SOCK).c_str(),
+					0)) {
+				LOG_ERR("MySQL Error Message: {}", mysql_error(handle.get()));
+				handle.reset();
+			}
+		}else{
+			LOG_ERR("failed to initialize MySQL connection handle");
+		}
+
+		if(handle || (!handle && !retryIfError)){
+			break;
+		}
+
+		// NOTE(fusion): Wait one second and retry.
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
-	isFirstAttemptToConnect = false;
 
-// MariaDB requires explicit SSL settings to avoid the following error:
-// "SSL is required, but the server does not support it"
-// For more details see issue #4954 ( https://github.com/otland/forgottenserver/issues/4954 )
-#ifdef MARIADB_VERSION_ID
-	// this needs to be above "goto" otherwise it won't build
-	bool ssl_enforce = false;
-	bool ssl_verify = false;
-#endif
-
-	tfs::detail::Mysql_ptr handle{mysql_init(nullptr)};
-	if (!handle) {
-		std::cout << std::endl << "Failed to initialize MySQL connection handle." << std::endl;
-		goto error;
-	}
-
-// MariaDB explicit SSL settings continued
-#ifdef MARIADB_VERSION_ID
-	mysql_options(handle.get(), MYSQL_OPT_SSL_ENFORCE, &ssl_enforce);
-	mysql_options(handle.get(), MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &ssl_verify);
-	mysql_ssl_set(handle.get(), nullptr, nullptr, nullptr, nullptr, nullptr);
-#endif
-
-	// connects to database
-	if (!mysql_real_connect(handle.get(), getString(ConfigManager::MYSQL_HOST).c_str(),
-	                        getString(ConfigManager::MYSQL_USER).c_str(), getString(ConfigManager::MYSQL_PASS).c_str(),
-	                        getString(ConfigManager::MYSQL_DB).c_str(), getNumber(ConfigManager::SQL_PORT),
-	                        getString(ConfigManager::MYSQL_SOCK).c_str(), 0)) {
-		std::cout << std::endl << "MySQL Error Message: " << mysql_error(handle.get()) << std::endl;
-		goto error;
-	}
 	return handle;
-
-error:
-	if (retryIfError) {
-		goto retry;
-	}
-	return nullptr;
 }
 
 static bool isLostConnectionError(const unsigned error)
@@ -67,8 +62,8 @@ static bool isLostConnectionError(const unsigned error)
 static bool executeQuery(tfs::detail::Mysql_ptr& handle, std::string_view query, const bool retryIfLostConnection)
 {
 	while (mysql_real_query(handle.get(), query.data(), query.length()) != 0) {
-		std::cout << "[Error - mysql_real_query] Query: " << query.substr(0, 256) << std::endl
-		          << "Message: " << mysql_error(handle.get()) << std::endl;
+		LOG_ERR("Query: {}", query.substr(0, 256));
+		LOG_ERR("Message: {}", mysql_error(handle.get()));
 		const unsigned error = mysql_errno(handle.get());
 		if (!isLostConnectionError(error) || !retryIfLostConnection) {
 			return false;
@@ -137,29 +132,31 @@ DBResult_ptr Database::storeQuery(std::string_view query)
 {
 	std::lock_guard<std::recursive_mutex> lockGuard(databaseLock);
 
-retry:
-	if (!::executeQuery(handle, query, retryQueries) && !retryQueries) {
-		return nullptr;
-	}
-
-	// we should call that every time as someone would call executeQuery('SELECT...')
-	// as it is described in MySQL manual: "it doesn't hurt" :P
-	tfs::detail::MysqlResult_ptr res{mysql_store_result(handle.get())};
-	if (!res) {
-		std::cout << "[Error - mysql_store_result] Query: " << query << std::endl
-		          << "Message: " << mysql_error(handle.get()) << std::endl;
-		const unsigned error = mysql_errno(handle.get());
-		if (!isLostConnectionError(error) || !retryQueries) {
-			return nullptr;
+	tfs::detail::MysqlResult_ptr myres = nullptr;
+	while(true){
+		if (!::executeQuery(handle, query, retryQueries) && !retryQueries) {
+			break;
 		}
-		goto retry;
+
+		myres.reset(mysql_store_result(handle.get()));
+		if(!myres){
+			LOG_ERR("Query: {}", query);
+			LOG_ERR("Message: {}", mysql_error(handle.get()));
+			const unsigned error = mysql_errno(handle.get());
+			if (!isLostConnectionError(error) || !retryQueries) {
+				break;
+			}
+		}
 	}
 
-	// retrieving results of query
-	DBResult_ptr result = std::make_shared<DBResult>(std::move(res));
-	if (!result->hasNext()) {
-		return nullptr;
+	DBResult_ptr result = nullptr;
+	if(myres){
+		result = std::make_shared<DBResult>(std::move(myres));
+		if (!result->hasNext()) {
+			result.reset();
+		}
 	}
+
 	return result;
 }
 
@@ -200,8 +197,7 @@ std::string_view DBResult::getString(std::string_view column) const
 {
 	auto it = listNames.find(column);
 	if (it == listNames.end()) {
-		std::cout << "[Error - DBResult::getString] Column '" << column << "' does not exist in result set."
-		          << std::endl;
+		LOG_ERR("column '{}' does not exist in result set", column);
 		return {};
 	}
 

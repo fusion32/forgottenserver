@@ -712,7 +712,7 @@ uint16_t Player::getLookCorpse() const
 void Player::setStorageValue(uint32_t key, std::optional<int32_t> value, bool isSpawn /* = false*/)
 {
 	if (IS_IN_KEYRANGE(key, RESERVED_RANGE)) {
-		std::cout << "Warning: unknown reserved key: " << key << " player: " << getName() << std::endl;
+		LOG_WARN("unknown reserved key {} (player: {})", key, getName());
 		return;
 	}
 
@@ -1374,7 +1374,7 @@ void Player::onRemoveCreature(Creature* creature, bool isLogout)
 		}
 
 		if (!saved) {
-			std::cout << "Error while saving player: " << getName() << std::endl;
+			LOG_ERR("unable to save player {}", getName());
 		}
 	}
 }

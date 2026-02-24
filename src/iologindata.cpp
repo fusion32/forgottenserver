@@ -106,8 +106,7 @@ bool IOLoginData::preloadPlayer(Player* player)
 	player->setName(result->getString("name"));
 	Group* group = g_game.groups.getGroup(result->getNumber<uint16_t>("group_id"));
 	if (!group) {
-		std::cout << "[Error - IOLoginData::preloadPlayer] " << player->name << " has Group ID "
-		          << result->getNumber<uint16_t>("group_id") << " which doesn't exist." << std::endl;
+		LOG_ERR("{} has invalid group id {}", player->name, result->getNumber<uint16_t>("group_id"));
 		return false;
 	}
 	player->setGroup(group);
@@ -183,8 +182,7 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 
 	Group* group = g_game.groups.getGroup(result->getNumber<uint16_t>("group_id"));
 	if (!group) {
-		std::cout << "[Error - IOLoginData::loadPlayer] " << player->name << " has Group ID "
-		          << result->getNumber<uint16_t>("group_id") << " which doesn't exist" << std::endl;
+		LOG_ERR("{} has invalid group id {}", player->name, result->getNumber<uint16_t>("group_id"));
 		return false;
 	}
 	player->setGroup(group);
@@ -230,8 +228,7 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 	}
 
 	if (!player->setVocation(result->getNumber<uint16_t>("vocation"))) {
-		std::cout << "[Error - IOLoginData::loadPlayer] " << player->name << " has Vocation ID "
-		          << result->getNumber<uint16_t>("vocation") << " which doesn't exist" << std::endl;
+		LOG_ERR("{} has invalid vocation id {}", player->name, result->getNumber<uint16_t>("vocation"));
 		return false;
 	}
 
@@ -294,8 +291,7 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 
 	const Town* town = g_game.map.towns.getTown(result->getNumber<uint32_t>("town_id"));
 	if (!town) {
-		std::cout << "[Error - IOLoginData::loadPlayer] " << player->name << " has Town ID "
-		          << result->getNumber<uint32_t>("town_id") << " which doesn't exist" << std::endl;
+		LOG_ERR("{} has invalid town id {}", player->name, result->getNumber<uint32_t>("town_id"));
 		return false;
 	}
 
@@ -340,8 +336,7 @@ bool IOLoginData::loadPlayer(Player* player, DBResult_ptr result)
 			if (guild) {
 				g_game.addGuild(guild);
 			} else {
-				std::cout << "[Warning - IOLoginData::loadPlayer] " << player->name << " has Guild ID " << guildId
-				          << " which doesn't exist" << std::endl;
+				LOG_WARN("{} has invalid guild id {}", player->name, guildId);
 			}
 		}
 
@@ -958,7 +953,7 @@ void IOLoginData::loadItems(ItemMap& itemMap, DBResult_ptr result)
 		Item* item = Item::CreateItem(type, count);
 		if (item) {
 			if (!item->unserializeAttr(propStream)) {
-				std::cout << "WARNING: Serialize error in IOLoginData::loadItems" << std::endl;
+				LOG_WARN("failed to deserialize item attributes");
 			}
 
 			std::pair<Item*, uint32_t> pair(item, pid);

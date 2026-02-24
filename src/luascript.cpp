@@ -18643,7 +18643,7 @@ int LuaScriptInterface::luaCreateXmlDocument(lua_State* L)
 		tfs::lua::pushUserdata(L, doc.release());
 		tfs::lua::setMetatable(L, -1, "XMLDocument");
 	} else {
-		printXMLError("Error - LuaScriptInterface::luaCreateXmlDocument", filename, result);
+		printXMLError("LuaScriptInterface::luaCreateXmlDocument", filename, result);
 		lua_pushnil(L);
 	}
 	return 1;

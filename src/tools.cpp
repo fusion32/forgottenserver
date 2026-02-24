@@ -10,6 +10,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+// TODO(fusion): Turn this into a macro similar to LOG_*?
 void printXMLError(const std::string& where, std::string_view fileName, const pugi::xml_parse_result& result)
 {
 	std::cout << '[' << where << "] Failed to load " << fileName << ": " << result.description() << std::endl;
